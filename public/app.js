@@ -53,7 +53,8 @@ function Icon({ name, size = 17, className = "" }) {
       h('line', { x1: '12', y1: '8', x2: '12', y2: '12' }),
       h('line', { x1: '12', y1: '16', x2: '12.01', y2: '16' })
     ),
-    checkCircle: h('path', { d: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3' })
+    checkCircle: h('path', { d: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3' }),
+    x: h('path', { d: 'M18 6L6 18M6 6l12 12' })
   };
 
   return h('svg', {
@@ -807,6 +808,7 @@ function ToastContainer({ toasts, onDismiss }) {
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -1373,18 +1375,33 @@ function App() {
   }
 
   return h('div', { className: `app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${darkMode ? 'dark-mode' : ''}` },
+    // Mobile Drawer Backdrop
+    mobileMenuOpen && h('div', {
+      className: 'mobile-sidebar-backdrop',
+      onClick: () => setMobileMenuOpen(false)
+    }),
+
     // SIDEBAR
-    h('aside', { className: `sidebar ${sidebarCollapsed ? 'collapsed' : ''}` },
+    h('aside', { className: `sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}` },
       // Sidebar Header (Merged collapse toggle directly inside sidebar)
       h('div', { className: 'sidebar-header' },
         !sidebarCollapsed && h('div', { className: 'sidebar-title' }, 'NAVIGATION'),
-        h('button', {
-          className: 'sidebar-toggle-btn',
-          onClick: toggleSidebar,
-          title: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
-          'aria-label': sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
-        },
-          h(Icon, { name: sidebarCollapsed ? 'chevronRight' : 'chevronLeft', size: 14 })
+        h('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+          h('button', {
+            className: 'sidebar-toggle-btn',
+            onClick: toggleSidebar,
+            title: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+            'aria-label': sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+          },
+            h(Icon, { name: sidebarCollapsed ? 'chevronRight' : 'chevronLeft', size: 14 })
+          ),
+          h('button', {
+            className: 'mobile-sidebar-close-btn',
+            onClick: () => setMobileMenuOpen(false),
+            'aria-label': 'Close menu'
+          },
+            h(Icon, { name: 'x', size: 14 })
+          )
         )
       ),
 
@@ -1405,7 +1422,7 @@ function App() {
             key: item.id,
             className: `nav-item ${activeTab === item.id ? 'active' : ''}`,
             title: item.label,
-            onClick: () => { setActiveTab(item.id); setSearchQuery(''); }
+            onClick: () => { setActiveTab(item.id); setSearchQuery(''); setMobileMenuOpen(false); }
           },
             h(Icon, { name: item.icon }),
             !sidebarCollapsed && h('span', { className: 'nav-label' }, item.label)
@@ -1448,7 +1465,15 @@ function App() {
     h('div', { className: 'main-wrapper' },
       // Top Bar (Logo at top left, Logout button at top right)
       h('header', { className: 'top-header' },
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+          // Mobile Hamburger Button
+          h('button', {
+            className: 'mobile-menu-toggle-btn',
+            onClick: () => setMobileMenuOpen(!mobileMenuOpen),
+            'aria-label': mobileMenuOpen ? 'Close menu' : 'Open menu'
+          },
+            h(Icon, { name: mobileMenuOpen ? 'x' : 'menu', size: 18 })
+          ),
           // Logo moved to top left
           h('div', { className: 'top-nav-brand' },
             h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', className: 'brand-logo-img' }),
@@ -3831,6 +3856,30 @@ function App() {
           h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setShowCompanyModal(false) }, 'Close')
         )
       )
+    ),
+
+    // Mobile Bottom Navigation Bar (Native mobile experience)
+    h('nav', { className: 'mobile-bottom-nav' },
+      h('button', {
+        className: `bottom-nav-item ${activeTab === 'overview' ? 'active' : ''}`,
+        onClick: () => { setActiveTab('overview'); setMobileMenuOpen(false); }
+      }, h(Icon, { name: 'overview', size: 18 }), h('span', null, 'Overview')),
+      h('button', {
+        className: `bottom-nav-item ${activeTab === 'inventory' ? 'active' : ''}`,
+        onClick: () => { setActiveTab('inventory'); setMobileMenuOpen(false); }
+      }, h(Icon, { name: 'inventory', size: 18 }), h('span', null, 'Goods')),
+      h('button', {
+        className: `bottom-nav-item ${activeTab === 'production' ? 'active' : ''}`,
+        onClick: () => { setActiveTab('production'); setMobileMenuOpen(false); }
+      }, h(Icon, { name: 'production', size: 18 }), h('span', null, 'Production')),
+      h('button', {
+        className: `bottom-nav-item ${activeTab === 'rawMaterials' ? 'active' : ''}`,
+        onClick: () => { setActiveTab('rawMaterials'); setMobileMenuOpen(false); }
+      }, h(Icon, { name: 'rawMaterials', size: 18 }), h('span', null, 'Materials')),
+      h('button', {
+        className: `bottom-nav-item ${mobileMenuOpen ? 'active' : ''}`,
+        onClick: () => setMobileMenuOpen(!mobileMenuOpen)
+      }, h(Icon, { name: 'menu', size: 18 }), h('span', null, 'More'))
     ),
 
     // Toast Notification System
