@@ -33,10 +33,26 @@ async function requireAuth(req, res, next) {
 
     const company = user.company_id ? await db.getCompanyById(user.company_id) : null;
 
+    let parsedPrefs = null;
+    if (user.preferences) {
+      if (typeof user.preferences === 'string') {
+        try { parsedPrefs = JSON.parse(user.preferences); } catch (_) { parsedPrefs = null; }
+      } else {
+        parsedPrefs = user.preferences;
+      }
+    }
+
     req.user = {
       id: user.id,
       name: user.name,
       email: user.email,
+      phone: user.phone || '',
+      role: user.role || 'Plant Manager',
+      department: user.department || 'Operations',
+      bio: user.bio || '',
+      emergency_contact: user.emergency_contact || '',
+      picture: user.picture || '',
+      preferences: parsedPrefs,
       company_id: user.company_id,
       company: company || { name: 'My Workspace', currency: '₹' }
     };

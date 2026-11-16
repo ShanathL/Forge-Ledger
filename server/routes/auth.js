@@ -130,4 +130,36 @@ router.get('/me', requireAuth, (req, res) => {
   });
 });
 
+// PUT /api/auth/profile
+router.put('/profile', requireAuth, async (req, res) => {
+  try {
+    const { name, email, phone, role, department, bio, emergency_contact, picture, preferences } = req.body;
+    const updated = await db.updateUserProfile(req.user.id, {
+      name,
+      email,
+      phone,
+      role,
+      department,
+      bio,
+      emergency_contact,
+      picture,
+      preferences
+    });
+
+    const safeUser = { ...updated };
+    delete safeUser.password_hash;
+    if (safeUser.preferences && typeof safeUser.preferences === 'string') {
+      try { safeUser.preferences = JSON.parse(safeUser.preferences); } catch (_) {}
+    }
+
+    res.json({
+      success: true,
+      user: safeUser,
+      message: 'Personal profile details updated successfully'
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

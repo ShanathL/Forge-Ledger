@@ -265,6 +265,50 @@ class DatabaseManager {
     return this.data.users.find(u => u.id === Number(id)) || null;
   }
 
+  async updateUserProfile(id, updates = {}) {
+    const userId = Number(id);
+    const { name, email, phone, role, department, bio, emergency_contact, picture, preferences } = updates;
+
+    if (this.useMySQL) {
+      const fields = [];
+      const values = [];
+
+      if (name !== undefined) { fields.push('name = ?'); values.push(name.trim()); }
+      if (email !== undefined) { fields.push('email = ?'); values.push(email.toLowerCase().trim()); }
+      if (phone !== undefined) { fields.push('phone = ?'); values.push(phone.trim()); }
+      if (role !== undefined) { fields.push('role = ?'); values.push(role.trim()); }
+      if (department !== undefined) { fields.push('department = ?'); values.push(department.trim()); }
+      if (bio !== undefined) { fields.push('bio = ?'); values.push(bio); }
+      if (emergency_contact !== undefined) { fields.push('emergency_contact = ?'); values.push(emergency_contact.trim()); }
+      if (picture !== undefined) { fields.push('picture = ?'); values.push(picture); }
+      if (preferences !== undefined) {
+        fields.push('preferences = ?');
+        values.push(typeof preferences === 'string' ? preferences : JSON.stringify(preferences));
+      }
+
+      if (fields.length > 0) {
+        values.push(userId);
+        await mysql.query(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
+      }
+      return await this.findUserById(userId);
+    }
+
+    const user = this.data.users.find(u => u.id === userId);
+    if (!user) throw new Error('User not found');
+    if (name !== undefined) user.name = name.trim();
+    if (email !== undefined) user.email = email.toLowerCase().trim();
+    if (phone !== undefined) user.phone = phone.trim();
+    if (role !== undefined) user.role = role.trim();
+    if (department !== undefined) user.department = department.trim();
+    if (bio !== undefined) user.bio = bio;
+    if (emergency_contact !== undefined) user.emergency_contact = emergency_contact.trim();
+    if (picture !== undefined) user.picture = picture;
+    if (preferences !== undefined) user.preferences = preferences;
+    user.updated_at = new Date().toISOString();
+    this.saveJson();
+    return user;
+  }
+
   async createUser({ name, email, password, companyName }) {
     const existing = await this.findUserByEmail(email);
     if (existing) {

@@ -3,9 +3,10 @@
 
 const { useState, useEffect, useMemo, useCallback, createElement: h } = React;
 
-function formatCurrency(amount, currency = '₹') {
+function formatCurrency(amount, currency = null) {
   const num = Number(amount) || 0;
-  return `${currency}${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const sym = currency !== null ? currency : (typeof window !== 'undefined' && window.__forgeledgerCurrency ? window.__forgeledgerCurrency : '₹');
+  return `${sym}${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatDate(dateStr) {
@@ -1485,6 +1486,16 @@ function MobileFloatingActions({ isOpen, onToggle, onAction }) {
   );
 }
 
+// Available Workspace Primary Accent Colors
+const ACCENT_COLORS = {
+  blue: { id: 'blue', name: 'Cobalt Blue', primary: '#2563eb', hover: '#1d4ed8', light: 'rgba(37, 99, 235, 0.1)' },
+  emerald: { id: 'emerald', name: 'Emerald Forest', primary: '#059669', hover: '#047857', light: 'rgba(5, 150, 105, 0.1)' },
+  violet: { id: 'violet', name: 'Royal Violet', primary: '#7c3aed', hover: '#6d28d9', light: 'rgba(124, 58, 237, 0.1)' },
+  amber: { id: 'amber', name: 'Industrial Bronze', primary: '#d97706', hover: '#b45309', light: 'rgba(217, 119, 6, 0.1)' },
+  rose: { id: 'rose', name: 'Crimson Forge', primary: '#e11d48', hover: '#be123c', light: 'rgba(225, 29, 72, 0.1)' },
+  teal: { id: 'teal', name: 'Steel Cyan', primary: '#0d9488', hover: '#0f766e', light: 'rgba(13, 148, 136, 0.1)' }
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1503,13 +1514,99 @@ function App() {
     try { return localStorage.getItem('forgeledger_theme') === 'dark'; } catch (_) { return false; }
   });
 
+  // Theme Switching Animation State
+  const [themeSwitching, setThemeSwitching] = useState(false);
+
+  // Settings Sub-Tabs: 'profile' (Personal Details), 'company' (Workspace Details), 'customization' (UI & Operational Preferences)
+  const [settingsTab, setSettingsTab] = useState('profile');
+
+  // Workspace Customizations State (Stored in localStorage and synced to user profile preferences)
+  const [customizations, setCustomizations] = useState(() => {
+    const defaults = {
+      accentColor: 'blue',
+      density: 'comfortable',
+      currency: '₹',
+      tableStriped: false,
+      toastDuration: 3800,
+      defaultGst: 18,
+      defaultDueDays: 7,
+      lowStockThreshold: 5,
+      invoicePrefix: 'INV-'
+    };
+    try {
+      const saved = localStorage.getItem('forgeledger_customizations');
+      if (saved) return { ...defaults, ...JSON.parse(saved) };
+    } catch (_) {}
+    return defaults;
+  });
+
+  // Personal Profile Form State
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    role: 'Plant Manager',
+    department: 'Operations',
+    bio: '',
+    emergency_contact: ''
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingCustomizations, setSavingCustomizations] = useState(false);
+
+  // Animated Theme Switcher (Smooth 0.42s transition curve across the workspace)
   const toggleDarkMode = useCallback(() => {
+    setThemeSwitching(true);
+    document.body.classList.add('theme-switching');
     setDarkMode(prev => {
       const next = !prev;
       try { localStorage.setItem('forgeledger_theme', next ? 'dark' : 'light'); } catch (_) {}
       return next;
     });
+    setTimeout(() => {
+      setThemeSwitching(false);
+      document.body.classList.remove('theme-switching');
+    }, 450);
   }, []);
+
+  // Dynamic Customizations Application Effect
+  useEffect(() => {
+    const accent = ACCENT_COLORS[customizations.accentColor] || ACCENT_COLORS.blue;
+    document.documentElement.style.setProperty('--primary', accent.primary);
+    document.documentElement.style.setProperty('--primary-hover', accent.hover);
+    document.documentElement.style.setProperty('--primary-light', accent.light);
+
+    if (customizations.density === 'compact') {
+      document.body.classList.add('density-compact');
+    } else {
+      document.body.classList.remove('density-compact');
+    }
+
+    if (customizations.tableStriped) {
+      document.body.classList.add('table-striped');
+    } else {
+      document.body.classList.remove('table-striped');
+    }
+
+    window.__forgeledgerCurrency = customizations.currency;
+  }, [customizations]);
+
+  // Synchronize Personal Profile & Preferences when currentUser loads
+  useEffect(() => {
+    if (currentUser) {
+      setProfileForm({
+        name: currentUser.name || '',
+        email: currentUser.email || '',
+        phone: currentUser.phone || '',
+        role: currentUser.role || 'Plant Manager',
+        department: currentUser.department || 'Operations',
+        bio: currentUser.bio || '',
+        emergency_contact: currentUser.emergency_contact || ''
+      });
+      if (currentUser.preferences && typeof currentUser.preferences === 'object') {
+        setCustomizations(prev => ({ ...prev, ...currentUser.preferences }));
+      }
+    }
+  }, [currentUser]);
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed(prev => {
@@ -1528,8 +1625,8 @@ function App() {
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3800);
-  }, []);
+    }, customizations.toastDuration || 3800);
+  }, [customizations.toastDuration]);
 
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -2182,6 +2279,57 @@ function App() {
       .catch(err => addToast(err.message || 'Network error updating settings', 'error'));
   }
 
+  function handleSaveProfile(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    setSavingProfile(true);
+    fetch('/api/auth/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profileForm)
+    })
+      .then(r => r.json())
+      .then(res => {
+        setSavingProfile(false);
+        if (res.success && res.user) {
+          setCurrentUser(prev => ({ ...prev, ...res.user }));
+          addToast('Personal profile details updated successfully!', 'success');
+        } else {
+          addToast(res.error || 'Failed to update personal profile', 'error');
+        }
+      })
+      .catch(err => {
+        setSavingProfile(false);
+        addToast(err.message || 'Network error updating profile', 'error');
+      });
+  }
+
+  function handleSaveCustomizations(updated = {}) {
+    const next = { ...customizations, ...updated };
+    setCustomizations(next);
+    try {
+      localStorage.setItem('forgeledger_customizations', JSON.stringify(next));
+    } catch (_) {}
+
+    setSavingCustomizations(true);
+    fetch('/api/auth/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preferences: next })
+    })
+      .then(r => r.json())
+      .then(res => {
+        setSavingCustomizations(false);
+        if (res.success && res.user) {
+          setCurrentUser(prev => ({ ...prev, ...res.user }));
+          addToast('Customization preferences saved!', 'success');
+        }
+      })
+      .catch(() => {
+        setSavingCustomizations(false);
+        addToast('Preferences saved locally in browser.', 'info');
+      });
+  }
+
   function handleSwitchCompany(companyId) {
     setCompanyActionLoading(true);
     setCompanyError('');
@@ -2473,7 +2621,7 @@ function App() {
 
           // Theme Toggle
           h('button', {
-            className: 'theme-toggle-btn',
+            className: `theme-toggle-btn ${themeSwitching ? 'switching' : ''}`,
             onClick: toggleDarkMode,
             title: darkMode ? 'Switch to light mode' : 'Switch to dark mode',
             'aria-label': darkMode ? 'Switch to light mode' : 'Switch to dark mode'
@@ -3826,83 +3974,472 @@ function App() {
           )
         ),
 
-        // ================= TAB: SETTINGS =================
+        // ================= TAB: SETTINGS & PROFILE =================
         activeTab === 'settings' && h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
-              h('div', { className: 'page-subtitle' }, 'CONFIGURATION & PROFILE'),
-              h('h1', { className: 'page-title' }, 'Company Settings'),
-              h('p', { className: 'page-desc' }, 'Update legal identity, tax registration, and factory address for the currently active company.')
+              h('div', { className: 'page-subtitle' }, 'CONFIGURATION, PROFILE & PREFERENCES'),
+              h('h1', { className: 'page-title' }, 'Profile & Settings'),
+              h('p', { className: 'page-desc' }, 'Manage your personal operator identity, company workspace registration, and interface customizations.')
             )
           ),
 
-          // Active Company Indicator (Requirement: Profile only shows the company you are currently on)
-          h('div', { className: 'active-company-banner' },
-            h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
-              h('div', { className: 'workspace-avatar', style: { width: 42, height: 42, fontSize: 17, background: '#2563eb', color: '#fff' } }, currentUser?.company?.name?.charAt(0) || 'C'),
-              h('div', null,
-                h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                  h('strong', { style: { fontSize: 15, color: 'var(--text-primary)' } }, currentUser?.company?.name || 'Active Workspace'),
-                  h('span', { className: 'badge badge-success', style: { fontSize: 11, padding: '2px 8px' } }, '✓ Active Workspace')
+          // Sub-tabs navigation
+          h('div', { className: 'settings-tabs-nav' },
+            h('button', {
+              className: `settings-tab-btn ${settingsTab === 'profile' ? 'active' : ''}`,
+              onClick: () => setSettingsTab('profile')
+            },
+              h('span', null, '👤'),
+              h('span', null, 'Personal Profile')
+            ),
+            h('button', {
+              className: `settings-tab-btn ${settingsTab === 'company' ? 'active' : ''}`,
+              onClick: () => setSettingsTab('company')
+            },
+              h('span', null, '🏢'),
+              h('span', null, 'Company Workspace')
+            ),
+            h('button', {
+              className: `settings-tab-btn ${settingsTab === 'customization' ? 'active' : ''}`,
+              onClick: () => setSettingsTab('customization')
+            },
+              h('span', null, '🎨'),
+              h('span', null, 'Workspace Customization')
+            )
+          ),
+
+          // ----- SUB-TAB 1: PERSONAL PROFILE -----
+          settingsTab === 'profile' && h('div', null,
+            // Profile Hero Card
+            h('div', { className: 'profile-hero-card' },
+              h('div', { className: 'profile-avatar-large' },
+                (profileForm.name || currentUser?.name || 'U').charAt(0).toUpperCase()
+              ),
+              h('div', { style: { flex: 1 } },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 } },
+                  h('h2', { style: { margin: 0, fontSize: 18, color: 'var(--text-primary)' } }, profileForm.name || currentUser?.name || 'Operator Profile'),
+                  h('span', { className: 'badge badge-primary', style: { fontSize: 11, padding: '2px 8px' } }, profileForm.role || 'Plant Manager'),
+                  h('span', { className: 'badge badge-info', style: { fontSize: 11, padding: '2px 8px' } }, profileForm.department || 'Operations')
                 ),
-                h('div', { style: { fontSize: 12.5, color: '#64748b', marginTop: 2 } },
-                  `Company ID #${currentUser?.company_id || ''} • Managing ${userCompanies.length}/3 companies • Settings changes apply strictly to this workspace only`
+                h('div', { style: { fontSize: 13, color: 'var(--text-secondary)' } },
+                  currentUser?.email || 'Logged in operator',
+                  currentUser?.company?.name ? ` • Workspace: ${currentUser.company.name}` : ''
                 )
               )
             ),
-            h('button', {
-              className: 'btn btn-outline',
-              style: { fontSize: 12, padding: '6px 12px' },
-              onClick: () => { setShowCompanyModal(true); setCompanyError(''); }
-            }, 'Switch Company')
-          ),
 
-          h('div', { className: 'card', style: { maxWidth: 620, padding: 22 } },
-            h('form', { onSubmit: handleSaveSettings },
-              h('div', { className: 'form-group', style: { marginBottom: 12 } },
-                h('label', null, 'Company Display Name'),
-                h('input', {
-                  className: 'form-input',
-                  value: companySettings?.name || '',
-                  onChange: e => setCompanySettings({ ...companySettings, name: e.target.value })
-                })
+            // Profile Form Card
+            h('div', { className: 'card', style: { maxWidth: 760, padding: 24 } },
+              h('div', { style: { marginBottom: 18, borderBottom: '1px solid var(--border-light)', paddingBottom: 12 } },
+                h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Personal & Operator Details'),
+                h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
+                  'Your profile details are stored securely and associated with your account across factory logs, invoices, and reports.'
+                )
               ),
-              h('div', { className: 'form-group', style: { marginBottom: 12 } },
-                h('label', null, 'Legal Registered Name'),
-                h('input', {
-                  className: 'form-input',
-                  value: companySettings?.legal_name || '',
-                  onChange: e => setCompanySettings({ ...companySettings, legal_name: e.target.value })
-                })
-              ),
-              h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 } },
-                h('div', { className: 'form-group' },
-                  h('label', null, 'GST Number'),
-                  h('input', {
-                    className: 'form-input',
-                    value: companySettings?.gst_no || '',
-                    onChange: e => setCompanySettings({ ...companySettings, gst_no: e.target.value })
+              h('form', { onSubmit: handleSaveProfile },
+                h('div', { className: 'profile-details-grid', style: { marginBottom: 14 } },
+                  h('div', { className: 'form-group' },
+                    h('label', null, 'Full Name'),
+                    h('input', {
+                      className: 'form-input',
+                      value: profileForm.name,
+                      placeholder: 'Your full name',
+                      onChange: e => setProfileForm({ ...profileForm, name: e.target.value })
+                    })
+                  ),
+                  h('div', { className: 'form-group' },
+                    h('label', null, 'Email Address (Registered)'),
+                    h('input', {
+                      className: 'form-input',
+                      value: profileForm.email,
+                      disabled: true,
+                      style: { background: 'var(--bg-secondary)', cursor: 'not-allowed', opacity: 0.8 }
+                    })
+                  )
+                ),
+
+                h('div', { className: 'profile-details-grid', style: { marginBottom: 14 } },
+                  h('div', { className: 'form-group' },
+                    h('label', null, 'Phone / Mobile Number'),
+                    h('input', {
+                      className: 'form-input',
+                      type: 'tel',
+                      placeholder: '+91 98765 43210',
+                      value: profileForm.phone,
+                      onChange: e => setProfileForm({ ...profileForm, phone: e.target.value })
+                    })
+                  ),
+                  h('div', { className: 'form-group' },
+                    h('label', null, 'Job Designation / Role'),
+                    h('select', {
+                      className: 'form-input',
+                      value: profileForm.role,
+                      onChange: e => setProfileForm({ ...profileForm, role: e.target.value })
+                    },
+                      h('option', { value: 'Plant Manager' }, 'Plant Manager'),
+                      h('option', { value: 'Production Supervisor' }, 'Production Supervisor'),
+                      h('option', { value: 'Quality Auditor' }, 'Quality Auditor'),
+                      h('option', { value: 'Inventory & Store Controller' }, 'Inventory & Store Controller'),
+                      h('option', { value: 'Finance & Accounts Head' }, 'Finance & Accounts Head'),
+                      h('option', { value: 'Managing Director / Owner' }, 'Managing Director / Owner'),
+                      h('option', { value: 'Factory Technician' }, 'Factory Technician')
+                    )
+                  )
+                ),
+
+                h('div', { className: 'profile-details-grid', style: { marginBottom: 14 } },
+                  h('div', { className: 'form-group' },
+                    h('label', null, 'Department / Bay'),
+                    h('select', {
+                      className: 'form-input',
+                      value: profileForm.department,
+                      onChange: e => setProfileForm({ ...profileForm, department: e.target.value })
+                    },
+                      h('option', { value: 'Operations' }, 'Operations'),
+                      h('option', { value: 'Production & Manufacturing' }, 'Production & Manufacturing'),
+                      h('option', { value: 'Warehouse & Logistics' }, 'Warehouse & Logistics'),
+                      h('option', { value: 'Quality Control' }, 'Quality Control'),
+                      h('option', { value: 'Sales & Billing' }, 'Sales & Billing'),
+                      h('option', { value: 'Management' }, 'Management')
+                    )
+                  ),
+                  h('div', { className: 'form-group' },
+                    h('label', null, 'Emergency Contact (Phone or Name)'),
+                    h('input', {
+                      className: 'form-input',
+                      placeholder: 'e.g. +91 91234 56789 (Spouse / Family)',
+                      value: profileForm.emergency_contact,
+                      onChange: e => setProfileForm({ ...profileForm, emergency_contact: e.target.value })
+                    })
+                  )
+                ),
+
+                h('div', { className: 'form-group', style: { marginBottom: 20 } },
+                  h('label', null, 'Professional Bio & Shift Notes'),
+                  h('textarea', {
+                    className: 'form-textarea',
+                    rows: 3,
+                    placeholder: 'Operational duties, shift timings (e.g. Day Shift 08:00 - 17:00), or special machine certifications...',
+                    value: profileForm.bio,
+                    onChange: e => setProfileForm({ ...profileForm, bio: e.target.value })
                   })
                 ),
-                h('div', { className: 'form-group' },
-                  h('label', null, 'Registration No'),
+
+                h('button', {
+                  type: 'submit',
+                  className: 'btn btn-primary',
+                  disabled: savingProfile,
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 8 }
+                },
+                  savingProfile ? 'Saving Details...' : '💾 Save Personal Profile'
+                )
+              )
+            )
+          ),
+
+          // ----- SUB-TAB 2: COMPANY WORKSPACE -----
+          settingsTab === 'company' && h('div', null,
+            // Active Company Indicator (Requirement: Profile only shows the company you are currently on)
+            h('div', { className: 'active-company-banner' },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+                h('div', { className: 'workspace-avatar', style: { width: 42, height: 42, fontSize: 17, background: 'var(--primary)', color: '#fff' } }, currentUser?.company?.name?.charAt(0) || 'C'),
+                h('div', null,
+                  h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                    h('strong', { style: { fontSize: 15, color: 'var(--text-primary)' } }, currentUser?.company?.name || 'Active Workspace'),
+                    h('span', { className: 'badge badge-success', style: { fontSize: 11, padding: '2px 8px' } }, '✓ Active Workspace')
+                  ),
+                  h('div', { style: { fontSize: 12.5, color: '#64748b', marginTop: 2 } },
+                    `Company ID #${currentUser?.company_id || ''} • Managing ${userCompanies.length}/3 companies • Settings changes apply strictly to this workspace only`
+                  )
+                )
+              ),
+              h('button', {
+                className: 'btn btn-outline',
+                style: { fontSize: 12, padding: '6px 12px' },
+                onClick: () => { setShowCompanyModal(true); setCompanyError(''); }
+              }, 'Switch Company')
+            ),
+
+            h('div', { className: 'card', style: { maxWidth: 650, padding: 22 } },
+              h('div', { style: { marginBottom: 16, borderBottom: '1px solid var(--border-light)', paddingBottom: 10 } },
+                h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Workspace & Tax Identity'),
+                h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
+                  'Legal name, tax identification (GSTIN) and physical manufacturing address appearing on issued invoices.'
+                )
+              ),
+              h('form', { onSubmit: handleSaveSettings },
+                h('div', { className: 'form-group', style: { marginBottom: 12 } },
+                  h('label', null, 'Company Display Name'),
                   h('input', {
                     className: 'form-input',
-                    value: companySettings?.registration_no || '',
-                    onChange: e => setCompanySettings({ ...companySettings, registration_no: e.target.value })
+                    value: companySettings?.name || '',
+                    onChange: e => setCompanySettings({ ...companySettings, name: e.target.value })
+                  })
+                ),
+                h('div', { className: 'form-group', style: { marginBottom: 12 } },
+                  h('label', null, 'Legal Registered Name'),
+                  h('input', {
+                    className: 'form-input',
+                    value: companySettings?.legal_name || '',
+                    onChange: e => setCompanySettings({ ...companySettings, legal_name: e.target.value })
+                  })
+                ),
+                h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 } },
+                  h('div', { className: 'form-group' },
+                    h('label', null, 'GST Number'),
+                    h('input', {
+                      className: 'form-input',
+                      value: companySettings?.gst_no || '',
+                      onChange: e => setCompanySettings({ ...companySettings, gst_no: e.target.value })
+                    })
+                  ),
+                  h('div', { className: 'form-group' },
+                    h('label', null, 'Registration No'),
+                    h('input', {
+                      className: 'form-input',
+                      value: companySettings?.registration_no || '',
+                      onChange: e => setCompanySettings({ ...companySettings, registration_no: e.target.value })
+                    })
+                  )
+                ),
+                h('div', { className: 'form-group', style: { marginBottom: 16 } },
+                  h('label', null, 'Factory / Office Address'),
+                  h('textarea', {
+                    className: 'form-textarea',
+                    rows: 3,
+                    value: companySettings?.address || '',
+                    onChange: e => setCompanySettings({ ...companySettings, address: e.target.value })
+                  })
+                ),
+                h('button', { type: 'submit', className: 'btn btn-primary' }, 'Save Company Settings')
+              )
+            )
+          ),
+
+          // ----- SUB-TAB 3: WORKSPACE CUSTOMIZATION -----
+          settingsTab === 'customization' && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 840 } },
+            // Card 1: Theme & Visual Appearance
+            h('div', { className: 'card', style: { padding: 22 } },
+              h('div', { style: { marginBottom: 16, borderBottom: '1px solid var(--border-light)', paddingBottom: 10 } },
+                h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Visual Theme & Switching Animation'),
+                h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
+                  'Toggle dark mode with physics-based spring animations, or personalize your workshop brand accent color.'
+                )
+              ),
+
+              // Theme Mode Toggle
+              h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 10, marginBottom: 18, flexWrap: 'wrap', gap: 12 } },
+                h('div', null,
+                  h('div', { style: { fontWeight: 600, fontSize: 13.5, color: 'var(--text-primary)' } },
+                    darkMode ? '🌙 Dark Industrial Mode' : '☀️ Light Shopfloor Mode'
+                  ),
+                  h('div', { style: { fontSize: 12, color: 'var(--text-secondary)' } },
+                    'Silky smooth 450ms color-wave animation and rotating spring icon transition.'
+                  )
+                ),
+                h('button', {
+                  type: 'button',
+                  className: `btn btn-primary theme-toggle-btn ${themeSwitching ? 'switching' : ''}`,
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 16px' },
+                  onClick: toggleDarkMode
+                },
+                  h('span', { className: 'theme-icon', style: { fontSize: 15 } }, darkMode ? '☀️' : '🌙'),
+                  h('span', null, darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode')
+                )
+              ),
+
+              // Brand Accent Color Swatches
+              h('div', null,
+                h('label', { style: { fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' } }, 'Brand Accent Palette'),
+                h('div', { style: { fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 } },
+                  'Sets the primary color applied across buttons, active tab indicators, chart highlights, and focus rings.'
+                ),
+                h('div', { className: 'accent-palette-grid' },
+                  Object.values(ACCENT_COLORS).map(accent => {
+                    const isSelected = (customizations.accentColor || 'blue') === accent.id;
+                    return h('div', {
+                      key: accent.id,
+                      className: `accent-swatch-card ${isSelected ? 'active' : ''}`,
+                      onClick: () => handleSaveCustomizations({ accentColor: accent.id })
+                    },
+                      h('div', { className: 'accent-color-circle', style: { background: accent.primary } }),
+                      h('div', { style: { flex: 1, minWidth: 0 } },
+                        h('div', { style: { fontSize: 12.5, fontWeight: isSelected ? 700 : 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, accent.name),
+                        isSelected && h('div', { style: { fontSize: 10.5, color: accent.primary, fontWeight: 700 } }, '✓ Active')
+                      )
+                    );
+                  })
+                )
+              )
+            ),
+
+            // Card 2: Density & Formatting Preferences
+            h('div', { className: 'card', style: { padding: 22 } },
+              h('div', { style: { marginBottom: 16, borderBottom: '1px solid var(--border-light)', paddingBottom: 10 } },
+                h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Display Density & Number Formatting'),
+                h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
+                  'Adjust layout spacing for dense shop-floor data tables and select your regional currency symbol.'
+                )
+              ),
+
+              // Interface Density
+              h('div', { style: { marginBottom: 18 } },
+                h('label', { style: { fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' } }, 'Interface Display Density'),
+                h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 8 } },
+                  [
+                    { id: 'comfortable', label: 'Comfortable', desc: 'Standard balanced spacing for desktop and mobile' },
+                    { id: 'compact', label: 'Compact Shop Floor', desc: 'Tighter padding and margins for maximum data visibility' }
+                  ].map(d => {
+                    const isSelected = (customizations.density || 'comfortable') === d.id;
+                    return h('div', {
+                      key: d.id,
+                      className: `accent-swatch-card ${isSelected ? 'active' : ''}`,
+                      style: { flexDirection: 'column', alignItems: 'flex-start', padding: 12 },
+                      onClick: () => handleSaveCustomizations({ density: d.id })
+                    },
+                      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 4 } },
+                        h('strong', { style: { fontSize: 13, color: 'var(--text-primary)' } }, d.label),
+                        isSelected ? h('span', { className: 'badge badge-primary', style: { fontSize: 10 } }, '✓ Active') : null
+                      ),
+                      h('div', { style: { fontSize: 11.5, color: 'var(--text-secondary)' } }, d.desc)
+                    );
                   })
                 )
               ),
-              h('div', { className: 'form-group', style: { marginBottom: 16 } },
-                h('label', null, 'Factory / Office Address'),
-                h('textarea', {
-                  className: 'form-textarea',
-                  rows: 3,
-                  value: companySettings?.address || '',
-                  onChange: e => setCompanySettings({ ...companySettings, address: e.target.value })
-                })
+
+              // Currency Symbol Selector & Table Striping
+              h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginTop: 16 } },
+                h('div', { className: 'form-group' },
+                  h('label', { style: { fontWeight: 600, fontSize: 13 } }, 'Global Currency Symbol'),
+                  h('select', {
+                    className: 'form-input',
+                    value: customizations.currency || '₹',
+                    onChange: e => handleSaveCustomizations({ currency: e.target.value })
+                  },
+                    h('option', { value: '₹' }, '₹ (INR - Indian Rupee)'),
+                    h('option', { value: '$' }, '$ (USD - US Dollar)'),
+                    h('option', { value: '€' }, '€ (EUR - Euro)'),
+                    h('option', { value: '£' }, '£ (GBP - British Pound)'),
+                    h('option', { value: 'د.إ' }, 'د.إ (AED - UAE Dirham)')
+                  ),
+                  h('div', { style: { fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 } },
+                    `Example: ${formatCurrency(125000)}`
+                  )
+                ),
+
+                h('div', { className: 'form-group' },
+                  h('label', { style: { fontWeight: 600, fontSize: 13 } }, 'Table Row Zebra Striping'),
+                  h('label', { style: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)' } },
+                    h('input', {
+                      type: 'checkbox',
+                      checked: !!customizations.tableStriped,
+                      onChange: e => handleSaveCustomizations({ tableStriped: e.target.checked }),
+                      style: { width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--primary)' }
+                    }),
+                    h('span', null, 'Enable alternating zebra striped rows on inventory and invoice tables')
+                  )
+                )
+              )
+            ),
+
+            // Card 3: Manufacturing & Invoicing Defaults
+            h('div', { className: 'card', style: { padding: 22 } },
+              h('div', { style: { marginBottom: 16, borderBottom: '1px solid var(--border-light)', paddingBottom: 10 } },
+                h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Factory Operations & Invoicing Defaults'),
+                h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
+                  'Pre-fill operational parameters to save time when generating invoices and monitoring inventory stock.'
+                )
               ),
-              h('button', { type: 'submit', className: 'btn btn-primary' }, 'Save Changes')
+
+              h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 16 } },
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Default GST Tax Rate'),
+                  h('select', {
+                    className: 'form-input',
+                    value: customizations.defaultGst !== undefined ? customizations.defaultGst : 18,
+                    onChange: e => handleSaveCustomizations({ defaultGst: Number(e.target.value) })
+                  },
+                    h('option', { value: 0 }, '0% (Exempt)'),
+                    h('option', { value: 5 }, '5% (Essential Goods)'),
+                    h('option', { value: 12 }, '12% (Standard Lower)'),
+                    h('option', { value: 18 }, '18% (Standard Manufacturing)'),
+                    h('option', { value: 28 }, '28% (Special / High Tier)')
+                  )
+                ),
+
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Default Invoice Payment Due Terms'),
+                  h('select', {
+                    className: 'form-input',
+                    value: customizations.defaultDueDays !== undefined ? customizations.defaultDueDays : 7,
+                    onChange: e => handleSaveCustomizations({ defaultDueDays: Number(e.target.value) })
+                  },
+                    h('option', { value: 0 }, 'Due on Receipt (Immediate)'),
+                    h('option', { value: 7 }, 'Net 7 Days'),
+                    h('option', { value: 15 }, 'Net 15 Days'),
+                    h('option', { value: 30 }, 'Net 30 Days'),
+                    h('option', { value: 60 }, 'Net 60 Days')
+                  )
+                )
+              ),
+
+              h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 20 } },
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Low Stock Warning Threshold (Units)'),
+                  h('input', {
+                    className: 'form-input',
+                    type: 'number',
+                    min: 1,
+                    max: 1000,
+                    value: customizations.lowStockThreshold !== undefined ? customizations.lowStockThreshold : 5,
+                    onChange: e => handleSaveCustomizations({ lowStockThreshold: Number(e.target.value) })
+                  }),
+                  h('div', { style: { fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 } },
+                    'Items below this quantity trigger red warning badges in inventory.'
+                  )
+                ),
+
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Sales Invoice Number Prefix'),
+                  h('input', {
+                    className: 'form-input',
+                    value: customizations.invoicePrefix || 'INV-',
+                    placeholder: 'INV-',
+                    onChange: e => handleSaveCustomizations({ invoicePrefix: e.target.value })
+                  }),
+                  h('div', { style: { fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 } },
+                    'e.g. INV-1001 or FL-1001'
+                  )
+                )
+              ),
+
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid var(--border-light)', paddingTop: 14, flexWrap: 'wrap' } },
+                h('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  disabled: savingCustomizations,
+                  onClick: () => handleSaveCustomizations()
+                }, savingCustomizations ? 'Saving...' : '💾 Save Customizations'),
+                h('button', {
+                  type: 'button',
+                  className: 'btn btn-outline',
+                  onClick: () => {
+                    const defaults = {
+                      accentColor: 'blue',
+                      density: 'comfortable',
+                      currency: '₹',
+                      tableStriped: false,
+                      defaultGst: 18,
+                      defaultDueDays: 7,
+                      lowStockThreshold: 5,
+                      invoicePrefix: 'INV-'
+                    };
+                    handleSaveCustomizations(defaults);
+                    addToast('Reset to factory default customizations', 'info');
+                  }
+                }, '↺ Reset to Defaults')
+              )
             )
           )
         )

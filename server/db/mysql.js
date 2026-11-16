@@ -110,6 +110,30 @@ async function initDatabase(force = false) {
       }
     }
 
+    // Ensure personal profile columns exist on users table
+    const userProfileCols = [
+      { name: 'phone', type: 'VARCHAR(50) NULL DEFAULT ""' },
+      { name: 'role', type: 'VARCHAR(100) NULL DEFAULT "Plant Manager"' },
+      { name: 'department', type: 'VARCHAR(100) NULL DEFAULT "Operations"' },
+      { name: 'bio', type: 'TEXT NULL' },
+      { name: 'emergency_contact', type: 'VARCHAR(100) NULL DEFAULT ""' },
+      { name: 'preferences', type: 'LONGTEXT NULL' }
+    ];
+    for (const col of userProfileCols) {
+      try {
+        const [colExist] = await p.query(
+          `SELECT COUNT(*) AS cnt FROM information_schema.columns WHERE table_schema = ? AND table_name = 'users' AND column_name = ?`,
+          [dbName, col.name]
+        );
+        if (colExist[0] && Number(colExist[0].cnt) === 0) {
+          await p.query(`ALTER TABLE users ADD COLUMN \`${col.name}\` ${col.type};`);
+          console.log(`[MySQL Migration] Added ${col.name} column on 'users'.`);
+        }
+      } catch (uErr) {
+        console.warn(`[MySQL Migration Notice for users.${col.name}]:`, uErr.message);
+      }
+    }
+
     isConnected = true;
     return true;
   } catch (err) {
