@@ -101,48 +101,74 @@ function exportToCsv(filename, rows, headerMap) {
   }
 }
 
-// Enhanced, Highly Visible Inventory Pie / Donut Chart Component (Enlarged)
-function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹' }) {
+// Enhanced Asset Valuation Donut Chart (Finished Goods vs Raw Materials)
+function InventoryPieChart({ inventory = [], currency = '₹' }) {
   const [hoveredSlice, setHoveredSlice] = useState(null);
-  const categoryMap = {};
-  let totalVal = 0;
+
+  let finishedVal = 0;
+  let finishedUnits = 0;
+  let finishedCount = 0;
+  let finishedLowStock = 0;
+
+  let rawVal = 0;
+  let rawCount = 0;
+  let rawLowStock = 0;
 
   (inventory || []).forEach(item => {
-    let cat = item.category || 'Finished good';
-    // Normalize naming so "Raw material" and "Raw materials" group together cleanly
-    if (cat.toLowerCase().includes('raw')) cat = 'Raw materials';
-    else if (cat.toLowerCase().includes('finish')) cat = 'Finished goods';
+    const isRaw = (item.category || '').toLowerCase().includes('raw');
+    const qty = Number(item.quantity) || 0;
+    const cost = Number(item.unit_cost) || 0;
+    const val = qty * cost;
+    const isLow = qty <= (Number(item.reorder_level) || 5);
 
-    const val = (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0);
-    totalVal += val;
-    if (!categoryMap[cat]) categoryMap[cat] = { name: cat, value: 0, count: 0, lowStockCount: 0 };
-    categoryMap[cat].value += val;
-    categoryMap[cat].count += 1;
-    if (Number(item.quantity) <= (Number(item.reorder_level) || 5)) {
-      categoryMap[cat].lowStockCount += 1;
+    if (isRaw) {
+      rawVal += val;
+      rawCount += 1;
+      if (isLow) rawLowStock += 1;
+    } else {
+      finishedVal += val;
+      finishedUnits += qty;
+      finishedCount += 1;
+      if (isLow) finishedLowStock += 1;
     }
   });
 
-  const categories = Object.values(categoryMap);
-  if (totalVal === 0 && categories.length > 0) {
-    categories.forEach(c => c.value = c.count * 100);
-    totalVal = categories.reduce((sum, c) => sum + c.value, 0);
-  }
+  const totalVal = finishedVal + rawVal;
+  const fgPct = totalVal > 0 ? Math.round((finishedVal / totalVal) * 100) : 50;
+  const rmPct = totalVal > 0 ? Math.max(0, 100 - fgPct) : 50;
 
-  const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1'];
+  const categories = [
+    {
+      name: 'Finished Goods',
+      role: 'Ready to sell',
+      countText: `${finishedCount} product line(s) · ${finishedUnits} units in stock`,
+      value: finishedVal,
+      percent: fgPct,
+      color: '#2563eb', // Royal Blue
+      lowStockCount: finishedLowStock
+    },
+    {
+      name: 'Raw Materials',
+      role: 'Factory inputs',
+      countText: `${rawCount} material type(s) in warehouse`,
+      value: rawVal,
+      percent: rmPct,
+      color: '#10b981', // Emerald Green
+      lowStockCount: rawLowStock
+    }
+  ];
+
   const radius = 80;
   const circumference = 2 * Math.PI * radius; // ~502.655
 
   let accumulatedPercent = 0;
-  const slices = categories.map((cat, idx) => {
-    const percent = totalVal > 0 ? (cat.value / totalVal) : (1 / (categories.length || 1));
+  const slices = categories.map((cat) => {
+    const percent = totalVal > 0 ? (cat.value / totalVal) : 0.5;
     const strokeDash = (percent * circumference);
     const strokeOffset = (accumulatedPercent * circumference);
     accumulatedPercent += percent;
     return {
       ...cat,
-      percent: Math.round(percent * 100),
-      color: colors[idx % colors.length],
       strokeDasharray: `${strokeDash} ${circumference}`,
       strokeDashoffset: -strokeOffset
     };
@@ -209,7 +235,7 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
           fontWeight: '700',
           fill: activeSlice ? activeSlice.color : 'var(--text-muted)',
           letterSpacing: '0.8px'
-        }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'TOTAL VALUATION')
+        }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'TOTAL FACTORY WEALTH')
       )
     ),
     h('div', { className: 'pie-legend' },
@@ -220,28 +246,89 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
           className: `pie-legend-row ${isHovered ? 'hovered' : ''}`,
           style: {
             cursor: 'pointer',
-            padding: '8px 12px',
-            borderRadius: 8,
+            padding: '10px 14px',
+            borderRadius: 9,
             transition: 'all 0.15s ease',
             background: isHovered ? 'rgba(37, 99, 235, 0.1)' : 'var(--bg-secondary)',
-            marginBottom: 6,
+            marginBottom: 8,
             border: isHovered ? `1px solid ${slice.color}` : '1px solid transparent'
           },
           onMouseEnter: () => setHoveredSlice(slice.name),
           onMouseLeave: () => setHoveredSlice(null)
         },
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-            h('span', { className: 'pie-legend-dot', style: { backgroundColor: slice.color, width: 10, height: 10, borderRadius: '50%' } }),
-            h('span', { className: 'pie-legend-name', style: { fontWeight: 600, fontSize: 13 } }, slice.name),
-            slice.lowStockCount > 0 && h('span', { className: 'badge badge-warning', style: { fontSize: 10, padding: '1px 6px' } }, `${slice.lowStockCount} low stock`)
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            h('span', { className: 'pie-legend-dot', style: { backgroundColor: slice.color, width: 11, height: 11, borderRadius: '50%' } }),
+            h('div', null,
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                h('span', { className: 'pie-legend-name', style: { fontWeight: 700, fontSize: 13.5 } }, slice.name),
+                h('span', { style: { fontSize: 10.5, color: '#64748b', background: 'rgba(148,163,184,0.15)', padding: '1px 6px', borderRadius: 4 } }, slice.role),
+                slice.lowStockCount > 0 && h('span', { className: 'badge badge-warning', style: { fontSize: 9.5, padding: '1px 5px' } }, `${slice.lowStockCount} low stock`)
+              ),
+              h('div', { style: { fontSize: 11, color: '#64748b', marginTop: 2 } }, slice.countText)
+            )
           ),
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: 9 } },
-            h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13.5 } }, formatCurrency(slice.value, currency)),
-            h('span', { className: 'pie-legend-pct', style: { fontWeight: 700, background: slice.color, color: '#fff', padding: '2px 7px', borderRadius: 12, fontSize: 11 } }, `${slice.percent}%`)
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 } }, formatCurrency(slice.value, currency)),
+            h('span', { className: 'pie-legend-pct', style: { fontWeight: 700, background: slice.color, color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 11.5 } }, `${slice.percent}%`)
           )
         );
       })
     )
+  );
+}
+
+// Finished Goods Product Line & Profit Margin Chart Component
+function FinishedGoodsChart({ finishedGoods = [], currency = '₹' }) {
+  const totalVal = (finishedGoods || []).reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0), 0);
+  const totalUnits = (finishedGoods || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+
+  return h('div', { className: 'card chart-card', style: { padding: '18px 22px', marginBottom: 20 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+      h('div', null,
+        h('h3', { className: 'card-title' }, 'Finished Goods Stock & Profit Margins'),
+        h('div', { className: 'card-subtitle' }, 'Unit cost, retail selling value, and ready inventory across product lines')
+      ),
+      h('span', { className: 'badge badge-neutral' }, `${finishedGoods.length} Product Line(s) · ${totalUnits} Units Total`)
+    ),
+    finishedGoods.length === 0 ?
+      h('div', { style: { textAlign: 'center', padding: '24px', color: '#64748b' } }, 'No finished products found. Click "+ Add product" above.') :
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+        finishedGoods.map(item => {
+          const cost = Number(item.unit_cost) || 0;
+          const sellPrice = cost * 1.3; // Standard 30% manufacturing margin
+          const qty = Number(item.quantity) || 0;
+          const lineVal = qty * cost;
+          const lineSellVal = qty * sellPrice;
+          const pctOfStock = totalVal > 0 ? Math.round((lineVal / totalVal) * 100) : 100;
+
+          return h('div', {
+            key: item.id,
+            style: {
+              padding: '12px 16px',
+              borderRadius: 8,
+              background: 'var(--bg-secondary)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }
+          },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              h('div', null,
+                h('span', { style: { fontWeight: 700, fontSize: 13.5 } }, item.item_name),
+                h('span', { style: { marginLeft: 8, fontFamily: 'var(--font-mono)', fontSize: 11, color: '#64748b' } }, item.sku),
+                h('span', { className: 'badge badge-success', style: { marginLeft: 8, fontSize: 10 } }, `${qty} ${item.unit || 'units'} in stock`)
+              ),
+              h('div', { style: { textAlign: 'right' } },
+                h('div', { style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 } }, formatCurrency(lineVal, currency)),
+                h('div', { style: { fontSize: 11, color: '#64748b' } }, `Selling Value: ${formatCurrency(lineSellVal, currency)} (+30% markup)`)
+              )
+            ),
+            h('div', { style: { height: 7, borderRadius: 3.5, background: 'rgba(148, 163, 184, 0.16)', overflow: 'hidden' } },
+              h('div', { style: { width: `${pctOfStock}%`, height: '100%', background: '#2563eb', borderRadius: 3.5 } })
+            )
+          );
+        })
+      )
   );
 }
 
@@ -361,7 +448,7 @@ function RawMaterialsPieChart({ rawMaterials = [], currency = '₹' }) {
               fontWeight: '700',
               fill: activeSlice ? activeSlice.color : 'var(--text-muted)',
               letterSpacing: '0.8px'
-            }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'TOTAL RM VALUATION')
+            }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'RAW MATERIALS')
           )
         ),
         h('div', { className: 'pie-legend' },
@@ -432,8 +519,8 @@ function SalesStatusChart({ sales = [], currency = '₹' }) {
   return h('div', { className: 'card chart-card', style: { padding: '16px 20px', marginBottom: 20 } },
     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
       h('div', null,
-        h('h3', { className: 'card-title' }, 'Invoice Payment Status & Cash Inflow'),
-        h('div', { className: 'card-subtitle' }, 'Collection efficiency across all generated customer invoices')
+        h('h3', { className: 'card-title' }, 'Customer Invoices & Payment Pipeline'),
+        h('div', { className: 'card-subtitle' }, 'Cash collected vs pending payments vs overdue receivables')
       ),
       h('span', { className: 'badge badge-neutral' }, `${paidPct}% Collection Rate`)
     ),
@@ -484,8 +571,8 @@ function ExpenseCategoryChart({ expenses = [], currency = '₹' }) {
   return h('div', { className: 'card chart-card', style: { padding: '16px 20px', marginBottom: 20 } },
     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
       h('div', null,
-        h('h3', { className: 'card-title' }, 'Expenses by Category'),
-        h('div', { className: 'card-subtitle' }, 'Operational spending breakdown and cost distribution')
+        h('h3', { className: 'card-title' }, 'Operating Expenses by Category'),
+        h('div', { className: 'card-subtitle' }, 'Cost breakdown across manufacturing inputs, payroll, and facility costs')
       ),
       h('span', { className: 'badge badge-neutral' }, `${categories.length} Active Categories`)
     ),
@@ -539,8 +626,8 @@ function ProductionStatusChart({ productionRuns = [] }) {
   return h('div', { className: 'card chart-card', style: { padding: '16px 20px', marginBottom: 20 } },
     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
       h('div', null,
-        h('h3', { className: 'card-title' }, 'Manufacturing Batch Health & Fulfillment'),
-        h('div', { className: 'card-subtitle' }, 'Real-time output status across all scheduled production jobs')
+        h('h3', { className: 'card-title' }, 'Shop Floor Batch Status & Manufacturing Output'),
+        h('div', { className: 'card-subtitle' }, 'Progress of jobs transforming raw materials into finished products')
       ),
       h('span', { className: 'badge badge-neutral' }, `${completionRate}% Completion Rate`)
     ),
@@ -580,8 +667,8 @@ function ReportsComparisonChart({ reportsData = null, currency = '₹' }) {
   return h('div', { className: 'card chart-card', style: { padding: '18px 20px', marginBottom: 20 } },
     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
       h('div', null,
-        h('h3', { className: 'card-title' }, 'Monthly Revenue vs Expenses Comparison'),
-        h('div', { className: 'card-subtitle' }, 'Visual comparison of monthly sales inflow vs operating expenses')
+        h('h3', { className: 'card-title' }, 'Monthly Financial Performance (Revenue vs Expenses vs Profit)'),
+        h('div', { className: 'card-subtitle' }, 'Month-by-month cash flow and net profitability')
       ),
       h('div', { style: { display: 'flex', gap: 14, fontSize: 12 } },
         h('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
@@ -748,21 +835,43 @@ function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: 'demo@forgeledger.local', password: 'password123', companyName: 'Riverton Works' });
   const [authError, setAuthError] = useState('');
 
-  // Filtered Inventory (Finished products / goods & category filtering)
+  // Clean Separation of Finished Goods and Raw Materials (Option A)
+  const finishedGoods = useMemo(() => {
+    return (inventory || []).filter(i => !(i.category || '').toLowerCase().includes('raw'));
+  }, [inventory]);
+
+  const rawMaterialsList = useMemo(() => {
+    return (inventory || []).filter(i => (i.category || '').toLowerCase().includes('raw'));
+  }, [inventory]);
+
+  const finishedGoodsVal = useMemo(() => {
+    return finishedGoods.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unit_cost) || 0), 0);
+  }, [finishedGoods]);
+
+  const finishedGoodsUnits = useMemo(() => {
+    return finishedGoods.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+  }, [finishedGoods]);
+
+  const rawMaterialsVal = useMemo(() => {
+    const list = (rawMaterials && rawMaterials.length > 0) ? rawMaterials : rawMaterialsList;
+    return list.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unit_cost) || 0), 0);
+  }, [rawMaterials, rawMaterialsList]);
+
+  // Filtered Finished Goods (Exclusively sellable completed products)
   const filteredInventory = useMemo(() => {
     const q = (searchQuery || '').toLowerCase().trim();
-    return (inventory || []).filter(item => {
+    return finishedGoods.filter(item => {
       if (!item) return false;
-      const cat = (item.category || '').toLowerCase();
-      if (inventoryCategoryFilter === 'finished' && !cat.includes('finish')) return false;
-      if (inventoryCategoryFilter === 'raw' && !cat.includes('raw')) return false;
-      if (inventoryCategoryFilter === 'low_stock' && Number(item.quantity) > (Number(item.reorder_level) || 5)) return false;
+      const qty = Number(item.quantity) || 0;
+      const reorder = Number(item.reorder_level) || 5;
+      if (inventoryCategoryFilter === 'in_stock' && qty <= reorder) return false;
+      if (inventoryCategoryFilter === 'low_stock' && qty > reorder) return false;
       if (!q) return true;
       const name = (item.item_name || '').toLowerCase();
       const sku = (item.sku || '').toLowerCase();
-      return name.includes(q) || sku.includes(q) || cat.includes(q);
+      return name.includes(q) || sku.includes(q);
     });
-  }, [inventory, searchQuery, inventoryCategoryFilter]);
+  }, [finishedGoods, searchQuery, inventoryCategoryFilter]);
 
   // Filtered Sales
   const filteredSales = useMemo(() => {
@@ -1169,11 +1278,11 @@ function App() {
         !sidebarCollapsed && h('div', { className: 'nav-section-title' }, 'WORKSPACE'),
         [
           { id: 'overview', label: 'Overview', icon: 'overview' },
-          { id: 'inventory', label: 'Inventory', icon: 'inventory' },
-          { id: 'sales', label: 'Sales & invoices', icon: 'sales' },
-          { id: 'expenses', label: 'Expenses', icon: 'expenses' },
           { id: 'rawMaterials', label: 'Raw materials', icon: 'rawMaterials' },
           { id: 'production', label: 'Production', icon: 'production' },
+          { id: 'inventory', label: 'Finished goods', icon: 'inventory' },
+          { id: 'sales', label: 'Sales & invoices', icon: 'sales' },
+          { id: 'expenses', label: 'Expenses', icon: 'expenses' },
           { id: 'payroll', label: 'Payroll', icon: 'payroll' },
           { id: 'reports', label: 'Reports', icon: 'reports' }
         ].map(item =>
@@ -1238,7 +1347,7 @@ function App() {
             'Workspace / ',
             h('span', { className: 'current' },
               activeTab === 'overview' ? 'Business overview' :
-              activeTab === 'inventory' ? 'Inventory' :
+              activeTab === 'inventory' ? 'Finished goods' :
               activeTab === 'sales' ? 'Sales & invoices' :
               activeTab === 'expenses' ? 'Expenses' :
               activeTab === 'rawMaterials' ? 'Raw materials' :
@@ -1314,19 +1423,19 @@ function App() {
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Inventory items'),
+                h('span', { className: 'metric-label' }, 'Finished goods value'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'inventory' }))
               ),
-              h('div', { className: 'metric-value' }, dashboard?.inventoryCount || inventory.length),
-              h('div', { className: 'metric-footer' }, `${dashboard?.lowStockCount || 0} items at low stock`)
+              h('div', { className: 'metric-value' }, formatCurrency(finishedGoodsVal)),
+              h('div', { className: 'metric-footer' }, `${finishedGoods.length} product line(s) · ${finishedGoodsUnits} units ready to sell`)
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Inventory value'),
-                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'inventory' }))
+                h('span', { className: 'metric-label' }, 'Raw materials value'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'rawMaterials' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.inventoryValue || 126760)),
-              h('div', { className: 'metric-footer' }, 'Based on purchase price')
+              h('div', { className: 'metric-value' }, formatCurrency(rawMaterialsVal)),
+              h('div', { className: 'metric-footer' }, `${rawMaterials.length || rawMaterialsList.length} material type(s) in warehouse`)
             )
           ),
 
@@ -1336,17 +1445,17 @@ function App() {
             h('div', { className: 'card analytics-card' },
               h('div', { className: 'card-header' },
                 h('div', null,
-                  h('h3', { className: 'card-title' }, 'Inventory valuation & breakdown'),
-                  h('div', { className: 'card-subtitle' }, 'Asset distribution by manufacturing category')
+                  h('h3', { className: 'card-title' }, 'Total factory wealth breakdown'),
+                  h('div', { className: 'card-subtitle' }, 'Clear split between Finished Goods inventory and Raw Material stock')
                 ),
                 h('button', {
                   className: 'btn btn-outline',
                   style: { padding: '4px 9px', fontSize: 11.5 },
                   onClick: () => setActiveTab('inventory')
-                }, 'Manage stock →')
+                }, 'Manage goods →')
               ),
               h('div', { style: { padding: '18px 20px' } },
-                h(InventoryPieChart, { inventory, rawMaterials, currency: '₹' })
+                h(InventoryPieChart, { inventory, currency: '₹' })
               )
             ),
 
@@ -1472,10 +1581,10 @@ function App() {
             h('div', { className: 'card quick-actions-card' },
               h('h3', { className: 'card-title', style: { marginBottom: 14 } }, 'Quick actions'),
               [
-                { title: 'Add inventory', desc: 'Create or update a product', icon: 'inventory', action: () => { setFormData({}); setModalType('item'); } },
-                { title: 'Record expense', desc: 'Track a business expense', icon: 'expenses', action: () => { setFormData({}); setModalType('expense'); } },
-                { title: 'Raw materials', desc: 'Manage factory ingredients and stock', icon: 'rawMaterials', action: () => setActiveTab('rawMaterials') },
-                { title: 'View reports', desc: 'Review sales and expenses analytics', icon: 'reports', action: () => setActiveTab('reports') }
+                { title: 'Add finished product', desc: 'Register a sellable manufactured product', icon: 'inventory', action: () => { setFormData({ category: 'Finished good' }); setModalType('item'); } },
+                { title: 'Log raw materials', desc: 'Manage factory ingredients and warehouse stock', icon: 'rawMaterials', action: () => setActiveTab('rawMaterials') },
+                { title: 'New production batch', desc: 'Transform raw materials into finished goods', icon: 'production', action: () => { setFormData({}); setModalType('production'); } },
+                { title: 'View reports', desc: 'Review sales, expenses, and profit analytics', icon: 'reports', action: () => setActiveTab('reports') }
               ].map(item =>
                 h('div', {
                   key: item.title,
@@ -1500,74 +1609,72 @@ function App() {
           )
         ),
 
-        // ================= TAB: INVENTORY (Fig. 4) =================
+        // ================= TAB: FINISHED GOODS (Option A) =================
         activeTab === 'inventory' && h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
-              h('div', { className: 'page-subtitle' }, 'PRODUCTS & STOCK'),
-              h('h1', { className: 'page-title' }, 'Inventory'),
-              h('p', { className: 'page-desc' }, 'Manage products, stock levels, pricing and GST rates.')
+              h('div', { className: 'page-subtitle' }, 'MANUFACTURED PRODUCTS'),
+              h('h1', { className: 'page-title' }, 'Finished goods'),
+              h('p', { className: 'page-desc' }, 'Completed manufacturing products ready for sale, inventory valuation, and dispatch.')
             ),
             h('div', { className: 'header-actions' },
               h('button', {
                 className: 'btn btn-outline',
-                onClick: () => exportToCsv('forgeledger_inventory', inventory, {
-                  item_name: 'Item Name',
+                onClick: () => exportToCsv('forgeledger_finished_goods', finishedGoods, {
+                  item_name: 'Product Name',
                   sku: 'SKU',
-                  category: 'Category',
-                  quantity: 'Quantity',
+                  quantity: 'Units In Stock',
                   unit: 'Unit',
-                  unit_cost: 'Purchase Price (INR)',
+                  unit_cost: 'Production Cost (INR)',
                   reorder_level: 'Reorder Level'
                 })
               }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
-              h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('item'); } },
-                h(Icon, { name: 'plus' }), 'Add item'
+              h('button', {
+                className: 'btn btn-primary',
+                onClick: () => { setFormData({ category: 'Finished good' }); setModalType('item'); }
+              },
+                h(Icon, { name: 'plus' }), 'Add product'
               )
             )
           ),
 
-          // 3 Metric Cards (Fig. 4)
+          // 3 Metric Cards for Finished Goods
           h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Total items')
+                h('span', { className: 'metric-label' }, 'Product lines'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'inventory' }))
               ),
-              h('div', { className: 'metric-value' }, inventory.length)
+              h('div', { className: 'metric-value' }, `${finishedGoods.length} products`),
+              h('div', { className: 'metric-footer' }, 'Cataloged SKU variants')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Low stock (≤ 5)')
+                h('span', { className: 'metric-label' }, 'Stock availability'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'checkCircle' }))
               ),
-              h('div', { className: 'metric-value' }, inventory.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)).length)
+              h('div', { className: 'metric-value' }, `${finishedGoodsUnits} units`),
+              h('div', { className: 'metric-footer success' }, 'Ready for customer orders')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Stock purchase value')
+                h('span', { className: 'metric-label' }, 'Finished goods valuation'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'sales' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.inventoryValue || 126760))
+              h('div', { className: 'metric-value' }, formatCurrency(finishedGoodsVal)),
+              h('div', { className: 'metric-footer' }, 'Production cost asset value')
             )
           ),
 
-          // Inventory Valuation Pie Chart
-          h('div', { className: 'card', style: { padding: '16px 20px', marginBottom: 20 } },
-            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
-              h('div', null,
-                h('h3', { className: 'card-title' }, 'Inventory breakdown by category'),
-                h('div', { className: 'card-subtitle' }, 'Visual valuation of materials and finished products')
-              ),
-              h('span', { className: 'badge badge-neutral' }, `${inventory.length + rawMaterials.length} total item types`)
-            ),
-            h(InventoryPieChart, { inventory, rawMaterials, currency: '₹' })
-          ),
+          // Finished Goods Stock & Profit Margins Chart
+          h(FinishedGoodsChart, { finishedGoods, currency: '₹' }),
 
-          // Category Filter Pills
+          // Filter Pills for Finished Goods Stock State
           h('div', { className: 'filter-pills-row' },
             [
-              { id: 'all', label: `All items (${inventory.length})` },
-              { id: 'finished', label: `Finished goods (${inventory.filter(i => (i.category || '').toLowerCase().includes('finish')).length})` },
-              { id: 'raw', label: `Raw materials (${inventory.filter(i => (i.category || '').toLowerCase().includes('raw')).length})` },
-              { id: 'low_stock', label: `⚠️ Low stock alert (${inventory.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)).length})` }
+              { id: 'all', label: `All products (${finishedGoods.length})` },
+              { id: 'in_stock', label: `In stock (${finishedGoods.filter(i => Number(i.quantity) > (Number(i.reorder_level) || 5)).length})` },
+              { id: 'low_stock', label: `⚠️ Low stock alert (${finishedGoods.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)).length})` }
             ].map(pill =>
               h('button', {
                 key: pill.id,
@@ -1577,53 +1684,58 @@ function App() {
             )
           ),
 
-          // Clean Search Bar Row (Fig. 4)
+          // Clean Search Bar Row
           h('div', { className: 'search-bar-row' },
             h('div', { className: 'search-wrapper' },
               h(Icon, { name: 'search', size: 15, className: 'search-icon' }),
               h('input', {
                 className: 'search-input',
-                placeholder: 'Search item name, SKU, or category...',
+                placeholder: 'Search finished product name or SKU...',
                 value: searchQuery,
                 onChange: e => setSearchQuery(e.target.value)
               })
             ),
-            h('div', { className: 'item-count-label' }, `${filteredInventory.length} items`)
+            h('div', { className: 'item-count-label' }, `${filteredInventory.length} products`)
           ),
 
-          // Inventory Table (Fig. 4)
+          // Finished Goods Table
           h('div', { className: 'card' },
             h('div', { className: 'table-responsive' },
               h('table', { className: 'custom-table' },
                 h('thead', null,
                   h('tr', null,
-                    h('th', null, 'ITEM / SKU'),
-                    h('th', null, 'STOCK'),
+                    h('th', null, 'PRODUCT / SKU'),
+                    h('th', null, 'STOCK STATUS'),
                     h('th', null, 'UNIT'),
-                    h('th', null, 'PURCHASE PRICE'),
-                    h('th', null, 'SELLING PRICE'),
-                    h('th', null, 'GST'),
+                    h('th', null, 'PRODUCTION COST'),
+                    h('th', null, 'SELLING PRICE (+30%)'),
+                    h('th', null, 'LINE VALUATION'),
                     h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
                   filteredInventory.length === 0 ?
-                    h('tr', null, h('td', { colSpan: 7, className: 'empty-state' }, 'No inventory items found')) :
-                    filteredInventory.map(item =>
-                      h('tr', { key: item.id },
+                    h('tr', null, h('td', { colSpan: 7, className: 'empty-state' }, 'No finished products found. Click "+ Add product" above.')) :
+                    filteredInventory.map(item => {
+                      const qty = Number(item.quantity) || 0;
+                      const cost = Number(item.unit_cost) || 0;
+                      const sell = cost * 1.3;
+                      const lineVal = qty * cost;
+                      const isLow = qty <= (Number(item.reorder_level) || 5);
+                      return h('tr', { key: item.id },
                         h('td', null,
                           h('div', { style: { fontWeight: 700 } }, item.item_name),
                           h('div', { style: { fontSize: 11, color: '#64748b', fontFamily: 'var(--font-mono)' } }, item.sku)
                         ),
                         h('td', null,
                           h('span', {
-                            className: `badge ${Number(item.quantity) <= 5 ? 'badge-danger' : 'badge-success'}`
-                          }, item.quantity)
+                            className: `badge ${isLow ? 'badge-danger' : 'badge-success'}`
+                          }, `${qty} ${item.unit || 'units'} ${isLow ? '⚠️ Low' : '✓ Good'}`)
                         ),
-                        h('td', { style: { color: '#64748b' } }, item.unit || 'pcs'),
-                        h('td', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(item.unit_cost)),
-                        h('td', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(Number(item.unit_cost) * 1.3)),
-                        h('td', null, '5%'),
+                        h('td', { style: { color: '#64748b' } }, item.unit || 'units'),
+                        h('td', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(cost)),
+                        h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#2563eb' } }, formatCurrency(sell)),
+                        h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 700 } }, formatCurrency(lineVal)),
                         h('td', { style: { textAlign: 'right' } },
                           h('div', { style: { display: 'inline-flex', gap: 6 } },
                             h('button', {
@@ -1638,8 +1750,8 @@ function App() {
                             }, h(Icon, { name: 'trash', size: 13 }))
                           )
                         )
-                      )
-                    )
+                      );
+                    })
                 )
               )
             )
@@ -1856,9 +1968,37 @@ function App() {
         activeTab === 'rawMaterials' && h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
-              h('div', { className: 'page-subtitle' }, 'MATERIALS & STOCK'),
+              h('div', { className: 'page-subtitle' }, 'FACTORY INPUTS & INGREDIENTS'),
               h('h1', { className: 'page-title' }, 'Raw materials'),
-              h('p', { className: 'page-desc' }, 'Track ingredients and manufacturing inputs separately from finished goods.')
+              h('p', { className: 'page-desc' }, 'Warehouse stock of metals, sheets, rods, and components for manufacturing.')
+            )
+          ),
+
+          // 3 Metric Cards for Raw Materials
+          h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
+            h('div', { className: 'metric-card' },
+              h('div', { className: 'metric-top' },
+                h('span', { className: 'metric-label' }, 'Material types'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'rawMaterials' }))
+              ),
+              h('div', { className: 'metric-value' }, `${rawMaterials.length} materials`),
+              h('div', { className: 'metric-footer' }, 'Factory inputs & supplies')
+            ),
+            h('div', { className: 'metric-card' },
+              h('div', { className: 'metric-top' },
+                h('span', { className: 'metric-label' }, 'Low stock alerts'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'alertCircle' }))
+              ),
+              h('div', { className: 'metric-value' }, `${rawMaterials.filter(m => Number(m.quantity) <= (Number(m.reorder_level) || 15)).length} alert(s)`),
+              h('div', { className: 'metric-footer warning' }, 'Needs reordering')
+            ),
+            h('div', { className: 'metric-card' },
+              h('div', { className: 'metric-top' },
+                h('span', { className: 'metric-label' }, 'Raw materials valuation'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'inventory' }))
+              ),
+              h('div', { className: 'metric-value' }, formatCurrency(rawMaterialsVal)),
+              h('div', { className: 'metric-footer' }, 'Capital in raw warehouse stock')
             )
           ),
 
@@ -2286,51 +2426,56 @@ function App() {
     modalType === 'item' && h('div', { className: 'modal-overlay' },
       h('div', { className: 'modal-card' },
         h('div', { className: 'modal-header' },
-          h('h3', null, formData.id ? 'Edit Inventory Item' : 'Add Inventory Item'),
+          h('div', null,
+            h('h3', { style: { margin: 0, fontSize: 16 } }, formData.id ? 'Edit Finished Product' : 'Add Finished Product'),
+            h('div', { style: { fontSize: 12, color: '#64748b', marginTop: 2 } }, 'Completed product manufactured for sale & order fulfillment')
+          ),
           h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
         ),
         h('form', { onSubmit: handleCreateItem },
           h('div', { className: 'modal-body' },
             h('div', { className: 'form-group' },
-              h('label', null, 'Item Name'),
-              h('input', { className: 'form-input', defaultValue: formData.item_name || '', placeholder: 'e.g. Steel sheets, 2mm', required: true, onChange: e => setFormData({ ...formData, item_name: e.target.value }) })
+              h('label', null, 'Product Name'),
+              h('input', { className: 'form-input', defaultValue: formData.item_name || '', placeholder: 'e.g. Assembly bracket', required: true, onChange: e => setFormData({ ...formData, item_name: e.target.value }) })
             ),
-            h('div', { className: 'form-group' },
-              h('label', null, 'SKU (Stock Keeping Unit)'),
-              h('input', { className: 'form-input', defaultValue: formData.sku || '', placeholder: 'e.g. RM-ST-002', onChange: e => setFormData({ ...formData, sku: e.target.value }) })
-            ),
-            h('div', { className: 'form-group' },
-              h('label', null, 'Category'),
-              h('select', { className: 'form-select', defaultValue: formData.category || 'Finished good', onChange: e => setFormData({ ...formData, category: e.target.value }) },
-                h('option', { value: 'Finished good' }, 'Finished good'),
-                h('option', { value: 'Raw material' }, 'Raw material'),
-                h('option', { value: 'General' }, 'General')
+            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+              h('div', { className: 'form-group' },
+                h('label', null, 'SKU (Stock Keeping Unit)'),
+                h('input', { className: 'form-input', defaultValue: formData.sku || '', placeholder: 'e.g. FG-BRK-001', onChange: e => setFormData({ ...formData, sku: e.target.value }) })
+              ),
+              h('div', { className: 'form-group' },
+                h('label', null, 'Category'),
+                h('select', { className: 'form-select', defaultValue: formData.category || 'Finished good', onChange: e => setFormData({ ...formData, category: e.target.value }) },
+                  h('option', { value: 'Finished good' }, 'Finished good (Sellable product)'),
+                  h('option', { value: 'Raw material' }, 'Raw material (Factory input)'),
+                  h('option', { value: 'General' }, 'General')
+                )
               )
             ),
             h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
               h('div', { className: 'form-group' },
-                h('label', null, 'Quantity'),
+                h('label', null, 'Units In Stock'),
                 h('input', { className: 'form-input', type: 'number', step: '0.01', defaultValue: formData.quantity || '', placeholder: '0.00', required: true, onChange: e => setFormData({ ...formData, quantity: e.target.value }) })
               ),
               h('div', { className: 'form-group' },
-                h('label', null, 'Unit'),
-                h('input', { className: 'form-input', defaultValue: formData.unit || 'units', placeholder: 'e.g. units, sheets, kg', onChange: e => setFormData({ ...formData, unit: e.target.value }) })
+                h('label', null, 'Unit of Measure'),
+                h('input', { className: 'form-input', defaultValue: formData.unit || 'units', placeholder: 'e.g. units, pcs, sets', onChange: e => setFormData({ ...formData, unit: e.target.value }) })
               )
             ),
             h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
               h('div', { className: 'form-group' },
-                h('label', null, 'Unit Cost (₹)'),
+                h('label', null, 'Production Cost per Unit (₹)'),
                 h('input', { className: 'form-input', type: 'number', step: '0.01', defaultValue: formData.unit_cost || '', placeholder: '0.00', onChange: e => setFormData({ ...formData, unit_cost: e.target.value }) })
               ),
               h('div', { className: 'form-group' },
-                h('label', null, 'Reorder Level'),
-                h('input', { className: 'form-input', type: 'number', step: '0.01', defaultValue: formData.reorder_level || '30', placeholder: '30.00', onChange: e => setFormData({ ...formData, reorder_level: e.target.value }) })
+                h('label', null, 'Low Stock Alert Level'),
+                h('input', { className: 'form-input', type: 'number', step: '0.01', defaultValue: formData.reorder_level || '10', placeholder: '10.00', onChange: e => setFormData({ ...formData, reorder_level: e.target.value }) })
               )
             )
           ),
           h('div', { className: 'modal-footer' },
             h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Cancel'),
-            h('button', { type: 'submit', className: 'btn btn-primary' }, 'Save Item')
+            h('button', { type: 'submit', className: 'btn btn-primary' }, formData.id ? 'Update Product' : 'Save Finished Product')
           )
         )
       )
