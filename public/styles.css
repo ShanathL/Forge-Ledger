@@ -13,8 +13,10 @@
   --sidebar-text-active: #ffffff;
 
   --bg-main: #f8fafc;
+  --bg-secondary: #f1f5f9;
   --card-bg: #ffffff;
   --border-light: #e2e8f0;
+  --border-color: #e2e8f0;
   --border-subtle: #f1f5f9;
   
   --text-primary: #0f172a;
@@ -865,6 +867,22 @@ body.dark-mode .header-logout-btn:hover {
   display: block;
 }
 
+.pie-svg text.pie-center-val {
+  fill: var(--text-primary);
+}
+
+body.dark-mode .pie-svg text.pie-center-val {
+  fill: #f8fafc !important;
+}
+
+.pie-svg text.pie-center-label {
+  fill: var(--text-secondary);
+}
+
+body.dark-mode .pie-svg text.pie-center-label {
+  fill: #94a3b8 !important;
+}
+
 .pie-legend {
   flex: 1;
   display: flex;
@@ -957,7 +975,7 @@ body.dark-mode .header-logout-btn:hover {
   margin-bottom: 6px;
 }
 
-/* Filter Pills */
+/* Filter Pills & Table Controls */
 .filter-pills-row {
   display: flex;
   align-items: center;
@@ -966,7 +984,31 @@ body.dark-mode .header-logout-btn:hover {
   flex-wrap: wrap;
 }
 
+.table-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.table-controls .filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.table-controls .search-wrapper {
+  width: 280px;
+  margin-left: auto;
+}
+
 .filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 5px 12px;
   border-radius: 20px;
   font-size: 12px;
@@ -976,6 +1018,7 @@ body.dark-mode .header-logout-btn:hover {
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
   transition: all 0.15s ease;
+  line-height: 1.2;
 }
 
 .filter-pill:hover {
@@ -989,6 +1032,76 @@ body.dark-mode .header-logout-btn:hover {
   border-color: var(--primary);
   color: #ffffff;
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.pill-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(148, 163, 184, 0.2);
+  color: currentColor;
+  margin-left: 6px;
+}
+
+.filter-pill.active .pill-count {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+body.dark-mode .filter-pill .pill-count {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+}
+
+body.dark-mode .filter-pill.active .pill-count {
+  background: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+/* Done Action Button */
+.btn-done-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-done-action:hover {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+/* Metric Icon Wrap Color Variations */
+.metric-icon-wrap.success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.metric-icon-wrap.warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.metric-icon-wrap.primary {
+  background: rgba(37, 99, 235, 0.12);
+  color: #3b82f6;
 }
 
 .card-header {
@@ -1367,8 +1480,10 @@ body.dark-mode .header-logout-btn:hover {
 -----------------------------------*/
 body.dark-mode {
   --bg-main: #0a0f1d;
+  --bg-secondary: #0d1527;
   --card-bg: #111827;
   --border-light: #1e293b;
+  --border-color: #1e293b;
   --border-subtle: #162032;
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;

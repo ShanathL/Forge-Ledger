@@ -607,7 +607,7 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory 
           textAnchor: 'middle',
           fontSize: activeSlice ? '15px' : '16px',
           fontWeight: '800',
-          fill: 'currentColor',
+          className: 'pie-center-val',
           fontFamily: 'var(--font-mono)'
         }, activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)),
         h('text', {
@@ -616,9 +616,10 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory 
           textAnchor: 'middle',
           fontSize: '10px',
           fontWeight: '700',
-          fill: activeSlice ? activeSlice.color : 'var(--text-muted)',
+          className: activeSlice ? '' : 'pie-center-label',
+          style: activeSlice ? { fill: activeSlice.color } : undefined,
           letterSpacing: '0.8px'
-        }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'TOTAL FACTORY WEALTH')
+        }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'FACTORY WEALTH')
       )
     ),
     h('div', { className: 'pie-legend' },
@@ -2867,17 +2868,17 @@ function App() {
                     productionRuns.length > 0 && plannedRuns.length > 0 && h('div', { style: { width: `${(plannedRuns.length / productionRuns.length) * 100}%`, background: '#f59e0b' }, title: `Planned: ${plannedRuns.length}` })
                   ),
                   h('div', { style: { display: 'flex', gap: 14, marginTop: 7, fontSize: 11.5, flexWrap: 'wrap' } },
-                    h('span', { style: { color: '#2563eb', fontWeight: 600 } }, `● ${inProgressRuns.length} In progress (${inProgressUnits} units)`),
-                    h('span', { style: { color: '#059669', fontWeight: 600 } }, `● ${completedRuns.length} Completed (${completedUnits} units)`),
-                    plannedRuns.length > 0 && h('span', { style: { color: '#d97706', fontWeight: 600 } }, `● ${plannedRuns.length} Planned`)
+                    h('span', { style: { color: '#10b981', fontWeight: 600 } }, `● ${completedRuns.length} Completed (${completedUnits} units)`),
+                    h('span', { style: { color: '#3b82f6', fontWeight: 600 } }, `● ${inProgressRuns.length} In progress (${inProgressUnits} units)`),
+                    plannedRuns.length > 0 && h('span', { style: { color: '#f59e0b', fontWeight: 600 } }, `● ${plannedRuns.length} Planned`)
                   )
                 ),
 
                 // 2. Active Batches on the Floor (Strictly active jobs)
                 h('div', { style: { borderTop: '1px solid var(--border-light)', paddingTop: 12 } },
-                  h('div', { style: { fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: '0.5px', marginBottom: 8 } }, 'ACTIVE SHOP FLOOR JOBS'),
+                  h('div', { style: { fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.5px', marginBottom: 8 } }, 'ACTIVE SHOP FLOOR JOBS'),
                   activeRuns.length === 0 ?
-                    h('div', { style: { padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 7, fontSize: 12, color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                    h('div', { style: { padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 7, fontSize: 12, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
                       h('span', null, 'No active batches right now.'),
                       h('button', {
                         className: 'btn btn-outline',
@@ -2901,13 +2902,12 @@ function App() {
                       },
                         h('div', null,
                           h('div', { style: { fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' } }, run.product),
-                          h('div', { style: { fontSize: 11, color: '#64748b', marginTop: 2 } }, `Batch started: ${formatDate(run.run_date)} · Target: ${run.quantity} units`)
+                          h('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginTop: 2 } }, `Batch started: ${formatDate(run.run_date)} · Target: ${run.quantity} units`)
                         ),
                         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
                           h('span', { className: `badge ${run.status === 'In progress' ? 'badge-info' : 'badge-warning'}` }, run.status),
                           run.status === 'In progress' && h('button', {
-                            className: 'btn btn-outline',
-                            style: { padding: '3px 7px', fontSize: 11 },
+                            className: 'btn-done-action',
                             title: 'Complete batch',
                             onClick: () => {
                               fetch(`/api/production/${run.id}/status`, {
@@ -3691,7 +3691,7 @@ function App() {
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
                 h('span', { className: 'metric-label' }, 'Total Batches'),
-                h('span', { className: 'metric-badge metric-neutral' }, 'All time')
+                h('div', { className: 'metric-icon-wrap primary' }, h(Icon, { name: 'production' }))
               ),
               h('div', { className: 'metric-value' }, productionRuns.length),
               h('div', { className: 'metric-footer' }, 'Batches scheduled or completed')
@@ -3699,7 +3699,7 @@ function App() {
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
                 h('span', { className: 'metric-label' }, 'In-Progress Jobs'),
-                h('span', { className: 'metric-badge metric-warning' }, 'Active floor')
+                h('div', { className: 'metric-icon-wrap warning' }, h(Icon, { name: 'refresh' }))
               ),
               h('div', { className: 'metric-value', style: { color: '#2563eb' } }, productionRuns.filter(r => r.status === 'In progress').length),
               h('div', { className: 'metric-footer' }, 'Active manufacturing runs')
@@ -3707,7 +3707,7 @@ function App() {
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
                 h('span', { className: 'metric-label' }, 'Completed Batches'),
-                h('span', { className: 'metric-badge metric-success' }, 'Finished')
+                h('div', { className: 'metric-icon-wrap success' }, h(Icon, { name: 'checkCircle' }))
               ),
               h('div', { className: 'metric-value', style: { color: '#059669' } }, productionRuns.filter(r => r.status === 'Completed').length),
               h('div', { className: 'metric-footer' }, 'Delivered to finished inventory')
@@ -3793,8 +3793,9 @@ function App() {
                         h('td', { style: { textAlign: 'right' } },
                           h('div', { style: { display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' } },
                             run.status !== 'Completed' && h('button', {
-                              className: 'btn btn-outline',
-                              style: { padding: '4px 8px', fontSize: 11.5, borderColor: '#10b981', color: '#059669' },
+                              className: 'btn btn-done-action',
+                              style: { padding: '4px 9px', fontSize: 11.5 },
+                              title: 'Mark batch as completed',
                               onClick: () => {
                                 fetch(`/api/production/${run.id}/status`, {
                                   method: 'PATCH',
@@ -3859,7 +3860,7 @@ function App() {
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
                 h('span', { className: 'metric-label' }, 'Total Staff'),
-                h('span', { className: 'metric-badge metric-neutral' }, 'Headcount')
+                h('div', { className: 'metric-icon-wrap primary' }, h(Icon, { name: 'payroll' }))
               ),
               h('div', { className: 'metric-value' }, employees.length),
               h('div', { className: 'metric-footer' }, 'Registered employees on company payroll')
@@ -3867,7 +3868,7 @@ function App() {
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
                 h('span', { className: 'metric-label' }, 'Monthly Payroll Outflow'),
-                h('span', { className: 'metric-badge metric-warning' }, 'Disbursement')
+                h('div', { className: 'metric-icon-wrap warning' }, h(Icon, { name: 'expenses' }))
               ),
               h('div', { className: 'metric-value', style: { color: '#0284c7' } },
                 formatCurrency(employees.filter(e => e.status === 'Active').reduce((sum, e) => sum + (Number(e.monthly_salary) || 0), 0) || dashboard?.monthlyPayroll || 28000)
@@ -3877,7 +3878,7 @@ function App() {
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
                 h('span', { className: 'metric-label' }, 'Active Workforce'),
-                h('span', { className: 'metric-badge metric-success' }, 'Active')
+                h('div', { className: 'metric-icon-wrap success' }, h(Icon, { name: 'user' }))
               ),
               h('div', { className: 'metric-value', style: { color: '#059669' } }, employees.filter(e => e.status === 'Active').length),
               h('div', { className: 'metric-footer' }, `${employees.filter(e => e.status !== 'Active').length} inactive / on-leave`)
