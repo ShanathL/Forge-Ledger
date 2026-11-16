@@ -108,7 +108,11 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
   let totalVal = 0;
 
   (inventory || []).forEach(item => {
-    const cat = item.category || 'Finished good';
+    let cat = item.category || 'Finished good';
+    // Normalize naming so "Raw material" and "Raw materials" group together cleanly
+    if (cat.toLowerCase().includes('raw')) cat = 'Raw materials';
+    else if (cat.toLowerCase().includes('finish')) cat = 'Finished goods';
+
     const val = (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0);
     totalVal += val;
     if (!categoryMap[cat]) categoryMap[cat] = { name: cat, value: 0, count: 0, lowStockCount: 0 };
@@ -117,15 +121,6 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
     if (Number(item.quantity) <= (Number(item.reorder_level) || 5)) {
       categoryMap[cat].lowStockCount += 1;
     }
-  });
-
-  (rawMaterials || []).forEach(rm => {
-    const cat = 'Raw materials';
-    const val = (Number(rm.quantity) || 0) * (Number(rm.unit_cost) || 0);
-    totalVal += val;
-    if (!categoryMap[cat]) categoryMap[cat] = { name: cat, value: 0, count: 0, lowStockCount: 0 };
-    categoryMap[cat].value += val;
-    categoryMap[cat].count += 1;
   });
 
   const categories = Object.values(categoryMap);
