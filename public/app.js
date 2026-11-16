@@ -41,7 +41,14 @@ function Icon({ name, size = 17, className = "" }) {
       h('line', { x1: '18.36', y1: '5.64', x2: '19.78', y2: '4.22' })
     ),
     moon: h('path', { d: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' }),
-    user: h('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' })
+    user: h('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' }),
+    download: h('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3' }),
+    alertCircle: h('g', null,
+      h('circle', { cx: '12', cy: '12', r: '10' }),
+      h('line', { x1: '12', y1: '8', x2: '12', y2: '12' }),
+      h('line', { x1: '12', y1: '16', x2: '12.01', y2: '16' })
+    ),
+    checkCircle: h('path', { d: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3' })
   };
 
   return h('svg', {
@@ -56,6 +63,158 @@ function Icon({ name, size = 17, className = "" }) {
     strokeLinejoin: 'round',
     className
   }, icons[name] || null);
+}
+
+// Client-Side CSV Export Utility
+function exportToCsv(filename, rows, headerMap) {
+  if (!rows || !rows.length) {
+    alert('No data available to export.');
+    return;
+  }
+  const keys = Object.keys(headerMap);
+  const labels = Object.values(headerMap);
+  const lines = [labels.join(',')];
+  rows.forEach(row => {
+    const line = keys.map(k => {
+      let val = row[k] ?? '';
+      if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+        val = `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    }).join(',');
+    lines.push(line);
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// Interactive Inventory Pie / Donut Chart Component
+function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹' }) {
+  const categoryMap = {};
+  let totalVal = 0;
+
+  (inventory || []).forEach(item => {
+    const cat = item.category || 'Finished good';
+    const val = (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0);
+    totalVal += val;
+    if (!categoryMap[cat]) categoryMap[cat] = { name: cat, value: 0, count: 0, lowStockCount: 0 };
+    categoryMap[cat].value += val;
+    categoryMap[cat].count += 1;
+    if (Number(item.quantity) <= (Number(item.reorder_level) || 5)) {
+      categoryMap[cat].lowStockCount += 1;
+    }
+  });
+
+  (rawMaterials || []).forEach(rm => {
+    const cat = 'Raw materials';
+    const val = (Number(rm.quantity) || 0) * (Number(rm.unit_cost) || 0);
+    totalVal += val;
+    if (!categoryMap[cat]) categoryMap[cat] = { name: cat, value: 0, count: 0, lowStockCount: 0 };
+    categoryMap[cat].value += val;
+    categoryMap[cat].count += 1;
+  });
+
+  const categories = Object.values(categoryMap);
+  if (totalVal === 0 && categories.length > 0) {
+    categories.forEach(c => c.value = c.count * 100);
+    totalVal = categories.reduce((sum, c) => sum + c.value, 0);
+  }
+
+  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+  const radius = 52;
+  const circumference = 2 * Math.PI * radius; // ~326.72
+
+  let accumulatedPercent = 0;
+  const slices = categories.map((cat, idx) => {
+    const percent = totalVal > 0 ? (cat.value / totalVal) : (1 / (categories.length || 1));
+    const strokeDash = (percent * circumference);
+    const strokeOffset = (accumulatedPercent * circumference);
+    accumulatedPercent += percent;
+    return {
+      ...cat,
+      percent: Math.round(percent * 100),
+      color: colors[idx % colors.length],
+      strokeDasharray: `${strokeDash} ${circumference}`,
+      strokeDashoffset: -strokeOffset
+    };
+  });
+
+  return h('div', { className: 'inventory-pie-widget' },
+    h('div', { className: 'pie-chart-wrap' },
+      h('svg', {
+        viewBox: '0 0 160 160',
+        width: 140,
+        height: 140,
+        className: 'pie-svg'
+      },
+        // Track
+        h('circle', {
+          cx: 80,
+          cy: 80,
+          r: radius,
+          fill: 'none',
+          stroke: 'rgba(148, 163, 184, 0.15)',
+          strokeWidth: 20
+        }),
+        // Slices
+        slices.map((slice, i) =>
+          h('circle', {
+            key: slice.name + i,
+            cx: 80,
+            cy: 80,
+            r: radius,
+            fill: 'none',
+            stroke: slice.color,
+            strokeWidth: 20,
+            strokeDasharray: slice.strokeDasharray,
+            strokeDashoffset: slice.strokeDashoffset,
+            transform: 'rotate(-90 80 80)',
+            style: { transition: 'all 0.3s ease' }
+          })
+        ),
+        // Donut Center Text
+        h('text', {
+          x: 80,
+          y: 75,
+          textAnchor: 'middle',
+          fontSize: '12px',
+          fontWeight: '800',
+          fill: 'currentColor',
+          fontFamily: 'var(--font-mono)'
+        }, formatCurrency(totalVal, currency)),
+        h('text', {
+          x: 80,
+          y: 91,
+          textAnchor: 'middle',
+          fontSize: '8.5px',
+          fontWeight: '700',
+          fill: 'var(--text-muted)',
+          letterSpacing: '0.8px'
+        }, 'VALUATION')
+      )
+    ),
+    h('div', { className: 'pie-legend' },
+      slices.map(slice =>
+        h('div', { key: slice.name, className: 'pie-legend-row' },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },
+            h('span', { className: 'pie-legend-dot', style: { backgroundColor: slice.color } }),
+            h('span', { className: 'pie-legend-name' }, slice.name),
+            slice.lowStockCount > 0 && h('span', { className: 'badge badge-warning', style: { fontSize: 9.5, padding: '1px 5px' } }, `${slice.lowStockCount} low`)
+          ),
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            h('span', { className: 'pie-legend-val' }, formatCurrency(slice.value, currency)),
+            h('span', { className: 'pie-legend-pct' }, `${slice.percent}%`)
+          )
+        )
+      )
+    )
+  );
 }
 
 function App() {
@@ -106,6 +265,7 @@ function App() {
 
   // Search Filter State
   const [searchQuery, setSearchQuery] = useState('');
+  const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState('all'); // 'all', 'finished', 'raw', 'low_stock'
 
   // Modal States
   const [modalType, setModalType] = useState(null); // 'item', 'sale', 'expense', 'employee', 'production'
@@ -119,17 +279,21 @@ function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: 'demo@forgeledger.local', password: 'password123', companyName: 'Riverton Works' });
   const [authError, setAuthError] = useState('');
 
-  // Filtered Inventory (Finished products / goods)
+  // Filtered Inventory (Finished products / goods & category filtering)
   const filteredInventory = useMemo(() => {
     const q = (searchQuery || '').toLowerCase().trim();
     return (inventory || []).filter(item => {
       if (!item) return false;
+      const cat = (item.category || '').toLowerCase();
+      if (inventoryCategoryFilter === 'finished' && !cat.includes('finish')) return false;
+      if (inventoryCategoryFilter === 'raw' && !cat.includes('raw')) return false;
+      if (inventoryCategoryFilter === 'low_stock' && Number(item.quantity) > (Number(item.reorder_level) || 5)) return false;
       if (!q) return true;
       const name = (item.item_name || '').toLowerCase();
       const sku = (item.sku || '').toLowerCase();
-      return name.includes(q) || sku.includes(q);
+      return name.includes(q) || sku.includes(q) || cat.includes(q);
     });
-  }, [inventory, searchQuery]);
+  }, [inventory, searchQuery, inventoryCategoryFilter]);
 
   // Filtered Sales
   const filteredSales = useMemo(() => {
@@ -417,17 +581,9 @@ function App() {
   return h('div', { className: `app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${darkMode ? 'dark-mode' : ''}` },
     // SIDEBAR
     h('aside', { className: `sidebar ${sidebarCollapsed ? 'collapsed' : ''}` },
-      // Sidebar Header with collapse toggle (Logo moved to top right)
-      h('div', { className: 'sidebar-header' },
-        !sidebarCollapsed && h('div', { className: 'sidebar-title' }, 'NAVIGATION'),
-        h('button', {
-          className: 'sidebar-toggle-btn',
-          onClick: toggleSidebar,
-          title: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
-          'aria-label': sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
-        },
-          h(Icon, { name: sidebarCollapsed ? 'chevronRight' : 'chevronLeft', size: 14 })
-        )
+      // Sidebar Header (Single toggle button is the hamburger in the top header)
+      !sidebarCollapsed && h('div', { className: 'sidebar-header' },
+        h('div', { className: 'sidebar-title' }, 'NAVIGATION')
       ),
 
       // Navigation Items (Starts immediately below header)
@@ -601,17 +757,113 @@ function App() {
             )
           ),
 
+          // Analytical Section: Inventory Breakdown Pie Chart + Operations / Stock Health
+          h('div', { className: 'dashboard-analytics-grid' },
+            // Inventory Category Valuation Pie Chart
+            h('div', { className: 'card analytics-card' },
+              h('div', { className: 'card-header' },
+                h('div', null,
+                  h('h3', { className: 'card-title' }, 'Inventory valuation & breakdown'),
+                  h('div', { className: 'card-subtitle' }, 'Asset distribution by manufacturing category')
+                ),
+                h('button', {
+                  className: 'btn btn-outline',
+                  style: { padding: '4px 9px', fontSize: 11.5 },
+                  onClick: () => setActiveTab('inventory')
+                }, 'Manage stock →')
+              ),
+              h('div', { style: { padding: '18px 20px' } },
+                h(InventoryPieChart, { inventory, rawMaterials, currency: '₹' })
+              )
+            ),
+
+            // Stock Health & Production Status Card
+            h('div', { className: 'card analytics-card' },
+              h('div', { className: 'card-header' },
+                h('div', null,
+                  h('h3', { className: 'card-title' }, 'Manufacturing & stock health'),
+                  h('div', { className: 'card-subtitle' }, 'Real-time inventory levels and active jobs')
+                ),
+                h('button', {
+                  className: 'btn btn-outline',
+                  style: { padding: '4px 9px', fontSize: 11.5 },
+                  onClick: () => setActiveTab('production')
+                }, 'Production →')
+              ),
+              h('div', { style: { padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 } },
+                // Stock Health Breakdown
+                h('div', null,
+                  h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6, fontWeight: 600 } },
+                    h('span', null, 'Stock Status Levels'),
+                    h('span', { style: { color: inventory.some(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)) ? '#d97706' : '#10b981' } },
+                      inventory.some(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)) ? '⚠️ Attention needed' : '✓ All items healthy'
+                    )
+                  ),
+                  // Progress meter
+                  h('div', { className: 'stock-health-bar' },
+                    h('div', {
+                      className: 'health-segment healthy',
+                      style: { width: `${Math.max(10, ((inventory.filter(i => Number(i.quantity) > (Number(i.reorder_level) || 5)).length) / (inventory.length || 1)) * 100)}%` },
+                      title: 'Adequate stock'
+                    }),
+                    h('div', {
+                      className: 'health-segment warning',
+                      style: { width: `${((inventory.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5) && Number(i.quantity) > 0).length) / (inventory.length || 1)) * 100}%` },
+                      title: 'Low stock'
+                    })
+                  ),
+                  h('div', { className: 'stock-health-legend' },
+                    h('span', { className: 'sh-pill healthy' }, `● ${inventory.filter(i => Number(i.quantity) > (Number(i.reorder_level) || 5)).length} In Stock`),
+                    h('span', { className: 'sh-pill warning' }, `● ${inventory.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)).length} Low Stock Alert`),
+                    h('span', { className: 'sh-pill info' }, `● ${rawMaterials.length} Raw Material types`)
+                  )
+                ),
+
+                // Active Production Runs
+                h('div', { style: { borderTop: '1px solid var(--border-light)', paddingTop: 12 } },
+                  h('div', { style: { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 } }, 'ACTIVE PRODUCTION RUNS'),
+                  productionRuns.slice(0, 2).map((pr, idx) =>
+                    h('div', { key: pr.id || idx, className: 'prod-run-item' },
+                      h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12.5 } },
+                        h('strong', null, pr.product),
+                        h('span', { className: `badge ${pr.status === 'Completed' ? 'badge-success' : pr.status === 'In progress' ? 'badge-info' : 'badge-neutral'}` }, pr.status)
+                      ),
+                      h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginTop: 3 } },
+                        h('span', null, `Batch: ${pr.run_date}`),
+                        h('span', null, `${pr.quantity} units`)
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          ),
+
           // Split View: Recent Sales + Quick Actions
           h('div', { style: { display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 22 } },
             // Recent Sales Table
             h('div', { className: 'card' },
               h('div', { className: 'card-header' },
                 h('h3', { className: 'card-title' }, 'Recent sales'),
-                h('a', {
-                  href: '#',
-                  onClick: (e) => { e.preventDefault(); setActiveTab('sales'); },
-                  style: { fontSize: 12.5, color: '#2563eb', fontWeight: 600, textDecoration: 'none' }
-                }, 'View all →')
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                  h('button', {
+                    className: 'btn btn-outline',
+                    style: { padding: '4px 9px', fontSize: 11.5 },
+                    onClick: () => exportToCsv('forgeledger_recent_sales', sales, {
+                      invoice_no: 'Invoice No',
+                      customer: 'Customer',
+                      issued_date: 'Issued Date',
+                      due_date: 'Due Date',
+                      amount: 'Amount (INR)',
+                      status: 'Payment Status'
+                    })
+                  }, h(Icon, { name: 'download', size: 13 }), 'Export CSV'),
+                  h('a', {
+                    href: '#',
+                    onClick: (e) => { e.preventDefault(); setActiveTab('sales'); },
+                    style: { fontSize: 12.5, color: '#2563eb', fontWeight: 600, textDecoration: 'none' }
+                  }, 'View all →')
+                )
               ),
               h('div', { className: 'table-responsive' },
                 h('table', { className: 'custom-table' },
@@ -683,8 +935,22 @@ function App() {
               h('h1', { className: 'page-title' }, 'Inventory'),
               h('p', { className: 'page-desc' }, 'Manage products, stock levels, pricing and GST rates.')
             ),
-            h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('item'); } },
-              h(Icon, { name: 'plus' }), 'Add item'
+            h('div', { className: 'header-actions' },
+              h('button', {
+                className: 'btn btn-outline',
+                onClick: () => exportToCsv('forgeledger_inventory', inventory, {
+                  item_name: 'Item Name',
+                  sku: 'SKU',
+                  category: 'Category',
+                  quantity: 'Quantity',
+                  unit: 'Unit',
+                  unit_cost: 'Purchase Price (INR)',
+                  reorder_level: 'Reorder Level'
+                })
+              }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
+              h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('item'); } },
+                h(Icon, { name: 'plus' }), 'Add item'
+              )
             )
           ),
 
@@ -710,13 +976,41 @@ function App() {
             )
           ),
 
+          // Inventory Valuation Pie Chart
+          h('div', { className: 'card', style: { padding: '16px 20px', marginBottom: 20 } },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+              h('div', null,
+                h('h3', { className: 'card-title' }, 'Inventory breakdown by category'),
+                h('div', { className: 'card-subtitle' }, 'Visual valuation of materials and finished products')
+              ),
+              h('span', { className: 'badge badge-neutral' }, `${inventory.length + rawMaterials.length} total item types`)
+            ),
+            h(InventoryPieChart, { inventory, rawMaterials, currency: '₹' })
+          ),
+
+          // Category Filter Pills
+          h('div', { className: 'filter-pills-row' },
+            [
+              { id: 'all', label: `All items (${inventory.length})` },
+              { id: 'finished', label: `Finished goods (${inventory.filter(i => (i.category || '').toLowerCase().includes('finish')).length})` },
+              { id: 'raw', label: `Raw materials (${inventory.filter(i => (i.category || '').toLowerCase().includes('raw')).length})` },
+              { id: 'low_stock', label: `⚠️ Low stock alert (${inventory.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)).length})` }
+            ].map(pill =>
+              h('button', {
+                key: pill.id,
+                className: `filter-pill ${inventoryCategoryFilter === pill.id ? 'active' : ''}`,
+                onClick: () => setInventoryCategoryFilter(pill.id)
+              }, pill.label)
+            )
+          ),
+
           // Clean Search Bar Row (Fig. 4)
           h('div', { className: 'search-bar-row' },
             h('div', { className: 'search-wrapper' },
               h(Icon, { name: 'search', size: 15, className: 'search-icon' }),
               h('input', {
                 className: 'search-input',
-                placeholder: 'Search item name or SKU...',
+                placeholder: 'Search item name, SKU, or category...',
                 value: searchQuery,
                 onChange: e => setSearchQuery(e.target.value)
               })
@@ -787,8 +1081,21 @@ function App() {
               h('h1', { className: 'page-title' }, 'Sales & invoices'),
               h('p', { className: 'page-desc' }, 'Create sales with multiple inventory items and track invoice totals.')
             ),
-            h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('sale'); } },
-              h(Icon, { name: 'plus' }), 'New sale'
+            h('div', { className: 'header-actions' },
+              h('button', {
+                className: 'btn btn-outline',
+                onClick: () => exportToCsv('forgeledger_all_sales', sales, {
+                  invoice_no: 'Invoice No',
+                  customer: 'Customer',
+                  issued_date: 'Issued Date',
+                  due_date: 'Due Date',
+                  amount: 'Amount (INR)',
+                  status: 'Payment Status'
+                })
+              }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
+              h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('sale'); } },
+                h(Icon, { name: 'plus' }), 'New sale'
+              )
             )
           ),
 

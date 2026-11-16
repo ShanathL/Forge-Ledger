@@ -15,7 +15,7 @@ git add .
 
 echo.
 echo Committing fixes...
-git commit -m "Update layout: move logo to top right, add Dark/Light mode toggle, move company to sidebar bottom, separate Account and Logout buttons"
+git commit -m "Streamline collapse toggle, add Inventory Pie Chart, Stock Health analytics, Filter pills and CSV export"
 
 echo.
 echo Pushing to GitHub (origin main)...
