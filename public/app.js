@@ -857,6 +857,15 @@ function App() {
     return list.reduce((sum, i) => sum + (Number(i.quantity) || 0) * (Number(i.unit_cost) || 0), 0);
   }, [rawMaterials, rawMaterialsList]);
 
+  // Production batch status breakdown for clear dashboard display
+  const inProgressRuns = useMemo(() => (productionRuns || []).filter(r => r.status === 'In progress'), [productionRuns]);
+  const plannedRuns = useMemo(() => (productionRuns || []).filter(r => r.status === 'Planned'), [productionRuns]);
+  const completedRuns = useMemo(() => (productionRuns || []).filter(r => r.status === 'Completed'), [productionRuns]);
+  const activeRuns = useMemo(() => (productionRuns || []).filter(r => r.status === 'In progress' || r.status === 'Planned'), [productionRuns]);
+  const inProgressUnits = useMemo(() => inProgressRuns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0), [inProgressRuns]);
+  const completedUnits = useMemo(() => completedRuns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0), [completedRuns]);
+  const lowStockMaterials = useMemo(() => (rawMaterials || []).filter(m => Number(m.quantity) <= (Number(m.reorder_level) || 15)), [rawMaterials]);
+
   // Filtered Finished Goods (Exclusively sellable completed products)
   const filteredInventory = useMemo(() => {
     const q = (searchQuery || '').toLowerCase().trim();
@@ -1459,12 +1468,12 @@ function App() {
               )
             ),
 
-            // Stock Health & Production Status Card
+            // Shop Floor & Production Status Card (Clean, Unambiguous & Actionable)
             h('div', { className: 'card analytics-card' },
               h('div', { className: 'card-header' },
                 h('div', null,
-                  h('h3', { className: 'card-title' }, 'Manufacturing & stock health'),
-                  h('div', { className: 'card-subtitle' }, 'Real-time inventory levels and active jobs')
+                  h('h3', { className: 'card-title' }, 'Shop Floor & Production Queue'),
+                  h('div', { className: 'card-subtitle' }, 'Active batch jobs transforming raw materials into finished goods')
                 ),
                 h('button', {
                   className: 'btn btn-outline',
@@ -1472,51 +1481,124 @@ function App() {
                   onClick: () => setActiveTab('production')
                 }, 'Production →')
               ),
-              h('div', { style: { padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 } },
-                // Stock Health Breakdown
+              h('div', { style: { padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 } },
+                // 1. Batch Status Pipeline Meter
                 h('div', null,
-                  h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6, fontWeight: 600 } },
-                    h('span', null, 'Stock Status Levels'),
-                    h('span', { style: { color: inventory.some(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)) ? '#d97706' : '#10b981' } },
-                      inventory.some(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)) ? '⚠️ Attention needed' : '✓ All items healthy'
+                  h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: 12 } },
+                    h('span', { style: { fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.4px' } }, 'BATCH PIPELINE STATUS'),
+                    h('span', { style: { color: inProgressRuns.length > 0 ? '#2563eb' : '#10b981', fontWeight: 600 } },
+                      inProgressRuns.length > 0 ? `⚙ ${inProgressRuns.length} batch active on floor` : '✓ All scheduled runs complete'
                     )
                   ),
-                  // Progress meter
-                  h('div', { className: 'stock-health-bar' },
-                    h('div', {
-                      className: 'health-segment healthy',
-                      style: { width: `${Math.max(10, ((inventory.filter(i => Number(i.quantity) > (Number(i.reorder_level) || 5)).length) / (inventory.length || 1)) * 100)}%` },
-                      title: 'Adequate stock'
-                    }),
-                    h('div', {
-                      className: 'health-segment warning',
-                      style: { width: `${((inventory.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5) && Number(i.quantity) > 0).length) / (inventory.length || 1)) * 100}%` },
-                      title: 'Low stock'
-                    })
+                  h('div', { style: { height: 8, borderRadius: 4, background: 'rgba(148, 163, 184, 0.16)', display: 'flex', overflow: 'hidden' } },
+                    productionRuns.length > 0 && completedRuns.length > 0 && h('div', { style: { width: `${(completedRuns.length / productionRuns.length) * 100}%`, background: '#10b981' }, title: `Completed: ${completedRuns.length}` }),
+                    productionRuns.length > 0 && inProgressRuns.length > 0 && h('div', { style: { width: `${(inProgressRuns.length / productionRuns.length) * 100}%`, background: '#3b82f6' }, title: `In progress: ${inProgressRuns.length}` }),
+                    productionRuns.length > 0 && plannedRuns.length > 0 && h('div', { style: { width: `${(plannedRuns.length / productionRuns.length) * 100}%`, background: '#f59e0b' }, title: `Planned: ${plannedRuns.length}` })
                   ),
-                  h('div', { className: 'stock-health-legend' },
-                    h('span', { className: 'sh-pill healthy' }, `● ${inventory.filter(i => Number(i.quantity) > (Number(i.reorder_level) || 5)).length} In Stock`),
-                    h('span', { className: 'sh-pill warning' }, `● ${inventory.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)).length} Low Stock Alert`),
-                    h('span', { className: 'sh-pill info' }, `● ${rawMaterials.length} Raw Material types`)
+                  h('div', { style: { display: 'flex', gap: 14, marginTop: 7, fontSize: 11.5, flexWrap: 'wrap' } },
+                    h('span', { style: { color: '#2563eb', fontWeight: 600 } }, `● ${inProgressRuns.length} In progress (${inProgressUnits} units)`),
+                    h('span', { style: { color: '#059669', fontWeight: 600 } }, `● ${completedRuns.length} Completed (${completedUnits} units)`),
+                    plannedRuns.length > 0 && h('span', { style: { color: '#d97706', fontWeight: 600 } }, `● ${plannedRuns.length} Planned`)
                   )
                 ),
 
-                // Active Production Runs
+                // 2. Active Batches on the Floor (Strictly active jobs)
                 h('div', { style: { borderTop: '1px solid var(--border-light)', paddingTop: 12 } },
-                  h('div', { style: { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 } }, 'ACTIVE PRODUCTION RUNS'),
-                  productionRuns.slice(0, 2).map((pr, idx) =>
-                    h('div', { key: pr.id || idx, className: 'prod-run-item' },
-                      h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12.5 } },
-                        h('strong', null, pr.product),
-                        h('span', { className: `badge ${pr.status === 'Completed' ? 'badge-success' : pr.status === 'In progress' ? 'badge-info' : 'badge-neutral'}` }, pr.status)
-                      ),
-                      h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginTop: 3 } },
-                        h('span', null, `Batch: ${pr.run_date}`),
-                        h('span', null, `${pr.quantity} units`)
+                  h('div', { style: { fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: '0.5px', marginBottom: 8 } }, 'ACTIVE SHOP FLOOR JOBS'),
+                  activeRuns.length === 0 ?
+                    h('div', { style: { padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 7, fontSize: 12, color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                      h('span', null, 'No active batches right now.'),
+                      h('button', {
+                        className: 'btn btn-outline',
+                        style: { padding: '2px 8px', fontSize: 11 },
+                        onClick: () => { setFormData({}); setModalType('production'); }
+                      }, '+ New Run')
+                    ) :
+                    activeRuns.map(run =>
+                      h('div', {
+                        key: run.id,
+                        style: {
+                          padding: '10px 12px',
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-light)',
+                          borderRadius: 8,
+                          marginBottom: 6,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }
+                      },
+                        h('div', null,
+                          h('div', { style: { fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' } }, run.product),
+                          h('div', { style: { fontSize: 11, color: '#64748b', marginTop: 2 } }, `Batch started: ${run.run_date} · Target: ${run.quantity} units`)
+                        ),
+                        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                          h('span', { className: `badge ${run.status === 'In progress' ? 'badge-info' : 'badge-warning'}` }, run.status),
+                          run.status === 'In progress' && h('button', {
+                            className: 'btn btn-outline',
+                            style: { padding: '3px 7px', fontSize: 11 },
+                            title: 'Complete batch',
+                            onClick: () => {
+                              fetch(`/api/production/${run.id}/status`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: 'Completed' })
+                              }).then(() => {
+                                loadAllData();
+                                addToast('Batch completed and output added to finished stock!', 'success');
+                              });
+                            }
+                          }, 'Done ✓')
+                        )
                       )
                     )
+                ),
+
+                // 3. Clear Restock Alert or Health Banner (Explicit, no mystery numbers)
+                lowStockMaterials.length > 0 ?
+                  h('div', {
+                    style: {
+                      padding: '8px 12px',
+                      borderRadius: 7,
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: 12,
+                      marginTop: 2
+                    }
+                  },
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 7, color: '#b45309' } },
+                      h(Icon, { name: 'alertCircle', size: 14 }),
+                      h('span', null,
+                        `Reorder Alert: `,
+                        h('strong', null, lowStockMaterials[0].item_name),
+                        ` (${lowStockMaterials[0].quantity} ${lowStockMaterials[0].unit} left)`
+                      )
+                    ),
+                    h('a', {
+                      href: '#',
+                      onClick: (e) => { e.preventDefault(); setActiveTab('rawMaterials'); },
+                      style: { fontSize: 11.5, color: '#2563eb', fontWeight: 700, textDecoration: 'none' }
+                    }, 'Restock →')
+                  ) :
+                  h('div', {
+                    style: {
+                      padding: '8px 12px',
+                      borderRadius: 7,
+                      background: 'rgba(16, 185, 129, 0.08)',
+                      border: '1px solid rgba(16, 185, 129, 0.2)',
+                      fontSize: 11.5,
+                      color: '#059669',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }
+                  },
+                    h(Icon, { name: 'checkCircle', size: 13 }),
+                    h('span', null, 'All raw material inputs & finished goods are at healthy stock levels.')
                   )
-                )
               )
             )
           ),
