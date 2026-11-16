@@ -1131,6 +1131,22 @@ function App() {
     try { return localStorage.getItem('forgeledger_theme') === 'dark'; } catch (_) { return false; }
   });
 
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode(prev => {
+      const next = !prev;
+      try { localStorage.setItem('forgeledger_theme', next ? 'dark' : 'light'); } catch (_) {}
+      return next;
+    });
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem('forgeledger_sidebar_collapsed', String(next)); } catch (_) {}
+      return next;
+    });
+  }, []);
+
   // Modern In-App Toast Notifications
   const [toasts, setToasts] = useState([]);
 
@@ -1224,21 +1240,7 @@ function App() {
     }
   }, [darkMode]);
 
-  const toggleDarkMode = () => {
-    setDarkMode(prev => {
-      const next = !prev;
-      try { localStorage.setItem('forgeledger_theme', next ? 'dark' : 'light'); } catch (_) {}
-      return next;
-    });
-  };
 
-  const toggleSidebar = () => {
-    setSidebarCollapsed(prev => {
-      const next = !prev;
-      try { localStorage.setItem('forgeledger_sidebar_collapsed', String(next)); } catch (_) {}
-      return next;
-    });
-  };
 
   // Core Data Stores
   const [dashboard, setDashboard] = useState(null);
