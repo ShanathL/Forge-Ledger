@@ -54,7 +54,11 @@ function Icon({ name, size = 17, className = "" }) {
       h('line', { x1: '12', y1: '16', x2: '12.01', y2: '16' })
     ),
     checkCircle: h('path', { d: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3' }),
-    x: h('path', { d: 'M18 6L6 18M6 6l12 12' })
+    x: h('path', { d: 'M18 6L6 18M6 6l12 12' }),
+    helpCircle: h('g', null, h('circle', { cx: '12', cy: '12', r: '10' }), h('path', { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' }), h('line', { x1: '12', y1: '17', x2: '12.01', y2: '17' })),
+    zap: h('path', { d: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z' }),
+    refresh: h('path', { d: 'M23 4v6h-6M1 20v-6h6M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15' }),
+    command: h('path', { d: 'M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z' })
   };
 
   return h('svg', {
@@ -806,9 +810,318 @@ function ToastContainer({ toasts, onDismiss }) {
   );
 }
 
+
+// ================= COMPONENT: GLOBAL COMMAND PALETTE (Ctrl+K) =================
+function CommandPalette({
+  isOpen,
+  onClose,
+  finishedGoods,
+  rawMaterials,
+  sales,
+  employees,
+  onNavigate,
+  onAction
+}) {
+  const [query, setQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = React.useRef(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setQuery('');
+      setSelectedIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 60);
+    }
+  }, [isOpen]);
+
+  const items = useMemo(() => {
+    const q = (query || '').toLowerCase().trim();
+
+    const navItems = [
+      { id: 'nav-overview', type: 'Nav', title: 'Go to Business Overview', tab: 'overview', icon: 'overview' },
+      { id: 'nav-inventory', type: 'Nav', title: 'Go to Finished Goods Inventory', tab: 'inventory', icon: 'inventory' },
+      { id: 'nav-raw', type: 'Nav', title: 'Go to Raw Materials Warehouse', tab: 'rawMaterials', icon: 'rawMaterials' },
+      { id: 'nav-prod', type: 'Nav', title: 'Go to Production & Manufacturing', tab: 'production', icon: 'production' },
+      { id: 'nav-sales', type: 'Nav', title: 'Go to Sales & Invoices', tab: 'sales', icon: 'sales' },
+      { id: 'nav-expenses', type: 'Nav', title: 'Go to Operating Expenses', tab: 'expenses', icon: 'expenses' },
+      { id: 'nav-payroll', type: 'Nav', title: 'Go to Payroll & Employee Staff', tab: 'payroll', icon: 'payroll' },
+      { id: 'nav-reports', type: 'Nav', title: 'Go to Financial Reports', tab: 'reports', icon: 'reports' },
+      { id: 'nav-settings', type: 'Nav', title: 'Go to Company Settings & Profile', tab: 'settings', icon: 'settings' }
+    ];
+
+    const quickActions = [
+      { id: 'act-sale', type: 'Action', title: '⚡ Create New Sales Invoice', action: 'sale', icon: 'sales' },
+      { id: 'act-prod', type: 'Action', title: '⚙️ Start New Production Batch Run', action: 'production', icon: 'production' },
+      { id: 'act-exp', type: 'Action', title: '💳 Record Operating Business Expense', action: 'expense', icon: 'expenses' },
+      { id: 'act-mat', type: 'Action', title: '🧱 Add Raw Material Stock', action: 'rawMaterial', icon: 'rawMaterials' },
+      { id: 'act-emp', type: 'Action', title: '👤 Add Employee to Payroll', action: 'employee', icon: 'payroll' },
+      { id: 'act-company', type: 'Action', title: '🏢 Switch Company Workspace (Max 3)', action: 'switchCompany', icon: 'overview' },
+      { id: 'act-shortcuts', type: 'Action', title: '⌨️ View Keyboard Shortcuts (?)', action: 'shortcuts', icon: 'helpCircle' }
+    ];
+
+    if (!q) {
+      return [...quickActions, ...navItems];
+    }
+
+    const matchedActions = quickActions.filter(a => a.title.toLowerCase().includes(q));
+    const matchedNav = navItems.filter(n => n.title.toLowerCase().includes(q));
+
+    const matchedGoods = (finishedGoods || [])
+      .filter(g => (g.item_name || g.name || '').toLowerCase().includes(q) || (g.sku || '').toLowerCase().includes(q))
+      .slice(0, 4)
+      .map(g => ({
+        id: `good-${g.id}`,
+        type: 'Finished Good',
+        title: `${g.item_name || g.name} (SKU: ${g.sku || 'N/A'})`,
+        sub: `Stock: ${g.quantity || 0} units · ₹${g.unit_price || g.unit_cost || 0}`,
+        tab: 'inventory',
+        searchVal: g.item_name || g.name,
+        icon: 'inventory'
+      }));
+
+    const matchedMaterials = (rawMaterials || [])
+      .filter(m => (m.name || '').toLowerCase().includes(q))
+      .slice(0, 3)
+      .map(m => ({
+        id: `mat-${m.id}`,
+        type: 'Raw Material',
+        title: `${m.name} (${m.quantity || 0} ${m.unit || 'kg'} in stock)`,
+        sub: `Cost: ₹${m.unit_cost || 0} / ${m.unit || 'kg'}`,
+        tab: 'rawMaterials',
+        searchVal: m.name,
+        icon: 'rawMaterials'
+      }));
+
+    const matchedSales = (sales || [])
+      .filter(s => (s.customer || '').toLowerCase().includes(q) || (s.invoice_no || '').toLowerCase().includes(q))
+      .slice(0, 4)
+      .map(s => ({
+        id: `sale-${s.id}`,
+        type: 'Invoice',
+        title: `${s.invoice_no || 'INV'} - ${s.customer || 'Customer'}`,
+        sub: `₹${Number(s.amount).toLocaleString()} · ${s.status}`,
+        tab: 'sales',
+        searchVal: s.invoice_no || s.customer,
+        icon: 'sales'
+      }));
+
+    const matchedEmployees = (employees || [])
+      .filter(e => (e.name || '').toLowerCase().includes(q) || (e.role || '').toLowerCase().includes(q))
+      .slice(0, 3)
+      .map(e => ({
+        id: `emp-${e.id}`,
+        type: 'Employee',
+        title: `${e.name} (${e.role})`,
+        sub: `Salary: ₹${Number(e.monthly_salary).toLocaleString()} · ${e.status}`,
+        tab: 'payroll',
+        searchVal: e.name,
+        icon: 'payroll'
+      }));
+
+    return [
+      ...matchedActions,
+      ...matchedNav,
+      ...matchedGoods,
+      ...matchedMaterials,
+      ...matchedSales,
+      ...matchedEmployees
+    ];
+  }, [query, finishedGoods, rawMaterials, sales, employees]);
+
+  const executeItem = (item) => {
+    if (item.action) {
+      onAction(item.action);
+    } else if (item.tab) {
+      onNavigate(item.tab, item.searchVal);
+    }
+    onClose();
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev + 1) % (items.length || 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev - 1 + items.length) % (items.length || 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (items[selectedIndex]) executeItem(items[selectedIndex]);
+    } else if (e.key === 'Escape') {
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return h('div', {
+    className: 'command-palette-overlay',
+    onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
+  },
+    h('div', { className: 'command-palette-card' },
+      h('div', { className: 'command-palette-input-wrap' },
+        h(Icon, { name: 'search', size: 16 }),
+        h('input', {
+          ref: inputRef,
+          className: 'command-palette-input',
+          placeholder: 'Search commands, products, invoices, staff (Press ↑↓ to navigate)...',
+          value: query,
+          onChange: (e) => { setQuery(e.target.value); setSelectedIndex(0); },
+          onKeyDown: handleKeyDown
+        }),
+        h('span', { className: 'command-palette-esc', onClick: onClose }, 'ESC')
+      ),
+      h('div', { className: 'command-palette-results' },
+        items.length === 0 ?
+          h('div', { className: 'command-palette-empty' },
+            h('div', { style: { fontSize: 22, marginBottom: 6 } }, '🔍'),
+            h('div', { style: { fontWeight: 700 } }, `No results found for "${query}"`),
+            h('div', { style: { fontSize: 12, color: '#94a3b8', marginTop: 2 } }, 'Try searching for an invoice #, customer name, material, or action')
+          ) :
+          items.map((item, idx) =>
+            h('div', {
+              key: item.id,
+              className: `command-palette-item ${selectedIndex === idx ? 'selected' : ''}`,
+              onClick: () => executeItem(item),
+              onMouseEnter: () => setSelectedIndex(idx)
+            },
+              h('div', { className: 'command-item-icon' }, h(Icon, { name: item.icon, size: 15 })),
+              h('div', { className: 'command-item-content' },
+                h('div', { className: 'command-item-title' }, item.title),
+                item.sub && h('div', { className: 'command-item-sub' }, item.sub)
+              ),
+              h('span', { className: 'command-item-badge' }, item.type),
+              selectedIndex === idx && h('span', { className: 'command-item-enter' }, '↵')
+            )
+          )
+      ),
+      h('div', { className: 'command-palette-footer' },
+        h('span', null, h('kbd', null, '↑'), ' ', h('kbd', null, '↓'), ' Navigate'),
+        h('span', null, h('kbd', null, '↵'), ' Select'),
+        h('span', null, h('kbd', null, 'Esc'), ' Close')
+      )
+    )
+  );
+}
+
+// ================= COMPONENT: KEYBOARD SHORTCUTS MODAL =================
+function ShortcutsModal({ isOpen, onClose }) {
+  if (!isOpen) return null;
+  const shortcuts = [
+    { key: 'Ctrl + K / ⌘K', desc: 'Open Command Palette & Global Search' },
+    { key: 'Alt + 1..8', desc: 'Instantly jump between tabs (Overview to Reports)' },
+    { key: 'Alt + D', desc: 'Toggle Dark / Light Mode' },
+    { key: '?', desc: 'Show this Keyboard Shortcuts cheat sheet' },
+    { key: 'Esc', desc: 'Close any active modal, drawer, or search dialog' },
+    { key: 'Ctrl + P', desc: 'Print or Save Tax Invoice / Payslip as PDF' }
+  ];
+
+  return h('div', {
+    className: 'modal-overlay',
+    onClick: (e) => { if (e.target === e.currentTarget) onClose(); }
+  },
+    h('div', { className: 'modal-card', style: { maxWidth: 520 } },
+      h('div', { className: 'modal-header' },
+        h('div', null,
+          h('h3', { style: { margin: 0, fontSize: 16 } }, 'Keyboard Shortcuts'),
+          h('div', { style: { fontSize: 12, color: '#64748b', marginTop: 2 } }, 'Power-user productivity shortcuts for PC')
+        ),
+        h('button', { className: 'modal-close', onClick: onClose }, '✕')
+      ),
+      h('div', { className: 'modal-body', style: { padding: '16px 20px' } },
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+          shortcuts.map(s =>
+            h('div', {
+              key: s.key,
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '9px 12px',
+                background: 'var(--bg-secondary)',
+                borderRadius: 8,
+                fontSize: 12.5
+              }
+            },
+              h('span', { style: { color: 'var(--text-primary)', fontWeight: 500 } }, s.desc),
+              h('kbd', {
+                style: {
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--border-light)',
+                  padding: '3px 8px',
+                  borderRadius: 5,
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: 'var(--primary)',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
+                }
+              }, s.key)
+            )
+          )
+        )
+      ),
+      h('div', { className: 'modal-footer' },
+        h('button', { className: 'btn btn-primary', onClick: onClose }, 'Got it')
+      )
+    )
+  );
+}
+
+// ================= COMPONENT: MOBILE FLOATING ACTION BUTTON (FAB) =================
+function MobileFloatingActions({ isOpen, onToggle, onAction }) {
+  return h('div', { className: 'mobile-fab-container' },
+    isOpen && h('div', { className: 'mobile-fab-backdrop', onClick: () => onToggle(false) }),
+    isOpen && h('div', { className: 'mobile-speed-dial-menu' },
+      h('button', {
+        className: 'speed-dial-item',
+        onClick: () => { onAction('sale'); onToggle(false); }
+      },
+        h('span', { className: 'speed-dial-label' }, 'New Invoice'),
+        h('div', { className: 'speed-dial-icon' }, h(Icon, { name: 'sales', size: 16 }))
+      ),
+      h('button', {
+        className: 'speed-dial-item',
+        onClick: () => { onAction('production'); onToggle(false); }
+      },
+        h('span', { className: 'speed-dial-label' }, 'New Batch Run'),
+        h('div', { className: 'speed-dial-icon' }, h(Icon, { name: 'production', size: 16 }))
+      ),
+      h('button', {
+        className: 'speed-dial-item',
+        onClick: () => { onAction('expense'); onToggle(false); }
+      },
+        h('span', { className: 'speed-dial-label' }, 'Record Expense'),
+        h('div', { className: 'speed-dial-icon' }, h(Icon, { name: 'expenses', size: 16 }))
+      ),
+      h('button', {
+        className: 'speed-dial-item',
+        onClick: () => { onAction('rawMaterial'); onToggle(false); }
+      },
+        h('span', { className: 'speed-dial-label' }, 'Add Material'),
+        h('div', { className: 'speed-dial-icon' }, h(Icon, { name: 'rawMaterials', size: 16 }))
+      )
+    ),
+    h('button', {
+      className: `mobile-fab-btn ${isOpen ? 'open' : ''}`,
+      onClick: () => onToggle(!isOpen),
+      title: isOpen ? 'Close actions' : 'Quick create action',
+      'aria-label': isOpen ? 'Close actions' : 'Quick create action'
+    },
+      h(Icon, { name: isOpen ? 'x' : 'plus', size: 20 })
+    )
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [sortField, setSortField] = useState('');
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -840,6 +1153,68 @@ function App() {
       delete window.__showToast;
     };
   }, [addToast]);
+
+  // Online / Offline Network Status Detection
+  useEffect(() => {
+    const handleOnline = () => { setIsOnline(true); addToast('Connection restored. Operating online.', 'info'); };
+    const handleOffline = () => { setIsOnline(false); addToast('Connection lost. Operating in offline mode.', 'warning'); };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [addToast]);
+
+  // Global Keyboard Shortcuts (Ctrl+K, ?, Alt+D, Alt+1..8, Esc)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName);
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setShowCommandPalette(false);
+        setShowShortcutsModal(false);
+        setModalType(null);
+        setShowCompanyModal(false);
+        setMobileMenuOpen(false);
+        setFabOpen(false);
+        return;
+      }
+
+      if (isInput) return;
+
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcutsModal(prev => !prev);
+        return;
+      }
+
+      if (e.altKey && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        toggleDarkMode();
+        return;
+      }
+
+      if (e.altKey && e.key >= '1' && e.key <= '8') {
+        e.preventDefault();
+        const tabList = ['overview', 'rawMaterials', 'production', 'inventory', 'sales', 'expenses', 'payroll', 'reports'];
+        const targetTab = tabList[parseInt(e.key, 10) - 1];
+        if (targetTab) {
+          setActiveTab(targetTab);
+          setMobileMenuOpen(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleDarkMode]);
 
   useEffect(() => {
     if (darkMode) {
@@ -1011,6 +1386,165 @@ function App() {
   const distinctExpenseCategories = useMemo(() => {
     return new Set((expenses || []).map(e => e?.category || 'General')).size;
   }, [expenses]);
+
+  // Universal Table Sorting (Field + Asc/Desc)
+  const toggleSort = useCallback((field) => {
+    if (sortField === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  }, [sortField]);
+
+  const renderSortTh = useCallback((field, label, align = 'left') => {
+    const isSorted = sortField === field;
+    const arrow = isSorted ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ' ↕';
+    return h('th', {
+      style: {
+        textAlign: align,
+        cursor: 'pointer',
+        userSelect: 'none',
+        color: isSorted ? 'var(--primary)' : undefined,
+        fontWeight: isSorted ? 700 : undefined
+      },
+      onClick: () => toggleSort(field),
+      title: `Sort by ${label}`
+    },
+      label,
+      h('span', {
+        style: {
+          fontSize: 10,
+          opacity: isSorted ? 1 : 0.35,
+          marginLeft: 4,
+          display: 'inline-block'
+        }
+      }, arrow)
+    );
+  }, [sortField, sortOrder, toggleSort]);
+
+  // Filtered Raw Materials
+  const filteredRawMaterials = useMemo(() => {
+    const q = (searchQuery || '').toLowerCase().trim();
+    return (rawMaterials || []).filter(m => {
+      if (!m) return false;
+      if (!q) return true;
+      const name = (m.name || '').toLowerCase();
+      const unit = (m.unit || '').toLowerCase();
+      return name.includes(q) || unit.includes(q);
+    });
+  }, [rawMaterials, searchQuery]);
+
+  // Sorted Lists for Interactive Column Header Sorting
+  const sortedInventory = useMemo(() => {
+    if (!sortField) return filteredInventory;
+    return [...filteredInventory].sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (typeof valA === 'number' || !isNaN(Number(valA))) {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredInventory, sortField, sortOrder]);
+
+  const sortedRawMaterials = useMemo(() => {
+    if (!sortField) return filteredRawMaterials;
+    return [...filteredRawMaterials].sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (typeof valA === 'number' || !isNaN(Number(valA))) {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredRawMaterials, sortField, sortOrder]);
+
+  const sortedSales = useMemo(() => {
+    if (!sortField) return filteredSales;
+    return [...filteredSales].sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (typeof valA === 'number' || !isNaN(Number(valA))) {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredSales, sortField, sortOrder]);
+
+  const sortedExpenses = useMemo(() => {
+    if (!sortField) return filteredExpenses;
+    return [...filteredExpenses].sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (typeof valA === 'number' || !isNaN(Number(valA))) {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredExpenses, sortField, sortOrder]);
+
+  const sortedProductionRuns = useMemo(() => {
+    if (!sortField) return filteredProductionRuns;
+    return [...filteredProductionRuns].sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (typeof valA === 'number' || !isNaN(Number(valA))) {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredProductionRuns, sortField, sortOrder]);
+
+  const sortedEmployees = useMemo(() => {
+    if (!sortField) return filteredEmployees;
+    return [...filteredEmployees].sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (typeof valA === 'number' || !isNaN(Number(valA))) {
+        valA = Number(valA) || 0;
+        valB = Number(valB) || 0;
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredEmployees, sortField, sortOrder]);
+
+
 
   // Initial Load: Check session
   useEffect(() => {
@@ -1498,10 +2032,40 @@ function App() {
           )
         ),
         h('div', { className: 'top-header-right' },
-          h('div', { className: 'status-indicator' },
-            h('div', { className: 'status-dot' }),
-            'All systems normal'
+          // Universal Search & Command Palette Trigger Button (Ctrl+K)
+          h('button', {
+            className: 'header-search-palette-btn',
+            onClick: () => setShowCommandPalette(true),
+            title: 'Global Search & Command Palette (Ctrl+K)',
+            'aria-label': 'Search or run command'
+          },
+            h(Icon, { name: 'search', size: 14 }),
+            h('span', { className: 'palette-btn-text' }, 'Search & Actions...'),
+            h('kbd', { className: 'palette-kbd-hint' }, 'Ctrl K')
           ),
+
+          // Online / Realtime Status Indicator (Click to reload)
+          h('div', {
+            className: 'status-indicator',
+            title: isOnline ? 'System online · Realtime connected (Click to sync)' : 'Operating offline',
+            style: { cursor: 'pointer' },
+            onClick: () => { loadAllData(); addToast('Refreshed factory data', 'info'); }
+          },
+            h('div', { className: `status-dot ${isOnline ? '' : 'offline'}` }),
+            h('span', null, isOnline ? 'Online' : 'Offline')
+          ),
+
+          // Keyboard Shortcuts Dialog Button (PC)
+          h('button', {
+            className: 'theme-toggle-btn header-shortcuts-btn',
+            onClick: () => setShowShortcutsModal(true),
+            title: 'Keyboard Shortcuts (?)',
+            'aria-label': 'Keyboard shortcuts'
+          },
+            h(Icon, { name: 'helpCircle', size: 15 })
+          ),
+
+          // Theme Toggle
           h('button', {
             className: 'theme-toggle-btn',
             onClick: toggleDarkMode,
@@ -1510,7 +2074,8 @@ function App() {
           },
             h(Icon, { name: darkMode ? 'sun' : 'moon', size: 16 })
           ),
-          // Logout button moved to top right
+
+          // Sign Out Button
           h('button', {
             className: 'header-logout-btn',
             onClick: handleLogout,
@@ -1917,19 +2482,19 @@ function App() {
               h('table', { className: 'custom-table' },
                 h('thead', null,
                   h('tr', null,
-                    h('th', null, 'PRODUCT / SKU'),
-                    h('th', null, 'STOCK STATUS'),
-                    h('th', null, 'UNIT'),
-                    h('th', null, 'PRODUCTION COST'),
-                    h('th', null, 'SELLING PRICE (+30%)'),
-                    h('th', null, 'LINE VALUATION'),
+                    renderSortTh('item_name', 'PRODUCT / SKU'),
+                    renderSortTh('quantity', 'STOCK STATUS'),
+                    renderSortTh('unit', 'UNIT'),
+                    renderSortTh('unit_cost', 'PRODUCTION COST'),
+                    renderSortTh('unit_cost', 'SELLING PRICE (+30%)'),
+                    renderSortTh('unit_cost', 'LINE VALUATION'),
                     h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
-                  filteredInventory.length === 0 ?
+                  sortedInventory.length === 0 ?
                     h('tr', null, h('td', { colSpan: 7, className: 'empty-state' }, 'No finished products found. Click "+ Add product" above.')) :
-                    filteredInventory.map(item => {
+                    sortedInventory.map(item => {
                       const qty = Number(item.quantity) || 0;
                       const cost = Number(item.unit_cost) || 0;
                       const sell = cost * 1.3;
@@ -2064,20 +2629,20 @@ function App() {
               h('table', { className: 'custom-table' },
                 h('thead', null,
                   h('tr', null,
-                    h('th', null, 'INVOICE'),
-                    h('th', null, 'CUSTOMER'),
-                    h('th', null, 'DATE'),
-                    h('th', null, 'SUBTOTAL'),
+                    renderSortTh('invoice_no', 'INVOICE'),
+                    renderSortTh('customer', 'CUSTOMER'),
+                    renderSortTh('issued_date', 'DATE'),
+                    renderSortTh('amount', 'SUBTOTAL'),
                     h('th', null, 'GST (5%)'),
-                    h('th', null, 'STATUS'),
-                    h('th', { style: { textAlign: 'right' } }, 'TOTAL'),
+                    renderSortTh('status', 'STATUS'),
+                    renderSortTh('amount', 'TOTAL', 'right'),
                     h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
-                  filteredSales.length === 0 ?
+                  sortedSales.length === 0 ?
                     h('tr', null, h('td', { colSpan: 8, className: 'empty-state' }, 'No sales invoices match your filters.')) :
-                    filteredSales.map(sale =>
+                    sortedSales.map(sale =>
                       h('tr', { key: sale.id },
                         h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 700 } }, sale.invoice_no),
                         h('td', null,
@@ -2224,18 +2789,18 @@ function App() {
               h('table', { className: 'custom-table' },
                 h('thead', null,
                   h('tr', null,
-                    h('th', null, 'EXPENSE'),
-                    h('th', null, 'CATEGORY'),
-                    h('th', null, 'DATE'),
-                    h('th', null, 'PAYMENT METHOD'),
-                    h('th', null, 'AMOUNT'),
+                    renderSortTh('description', 'EXPENSE'),
+                    renderSortTh('category', 'CATEGORY'),
+                    renderSortTh('expense_date', 'DATE'),
+                    renderSortTh('payment_method', 'PAYMENT METHOD'),
+                    renderSortTh('amount', 'AMOUNT'),
                     h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
-                  filteredExpenses.length === 0 ?
+                  sortedExpenses.length === 0 ?
                     h('tr', null, h('td', { colSpan: 6, className: 'empty-state' }, 'No expense records found')) :
-                    filteredExpenses.map(exp =>
+                    sortedExpenses.map(exp =>
                       h('tr', { key: exp.id },
                         h('td', { style: { fontWeight: 600 } }, exp.description),
                         h('td', null, h('span', { className: 'badge badge-neutral' }, exp.category)),
@@ -2371,17 +2936,17 @@ function App() {
               h('table', { className: 'custom-table' },
                 h('thead', null,
                   h('tr', null,
-                    h('th', null, 'SKU'),
-                    h('th', null, 'MATERIAL'),
-                    h('th', null, 'STOCK'),
-                    h('th', null, 'UNIT COST'),
+                    renderSortTh('sku', 'SKU'),
+                    renderSortTh('item_name', 'MATERIAL'),
+                    renderSortTh('quantity', 'STOCK'),
+                    renderSortTh('unit_cost', 'UNIT COST'),
                     h('th', { style: { textAlign: 'right' } }, 'ACTION')
                   )
                 ),
                 h('tbody', null,
-                  rawMaterials.length === 0 ?
+                  sortedRawMaterials.length === 0 ?
                     h('tr', null, h('td', { colSpan: 5, className: 'empty-state' }, 'No raw materials yet. Add a raw material using the form above.')) :
-                    rawMaterials.map(mat =>
+                    sortedRawMaterials.map(mat =>
                       h('tr', { key: mat.id },
                         h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600 } }, mat.sku),
                         h('td', { style: { fontWeight: 700 } }, mat.item_name),
@@ -2500,17 +3065,17 @@ function App() {
               h('table', { className: 'custom-table' },
                 h('thead', null,
                   h('tr', null,
-                    h('th', null, 'RUN DATE'),
-                    h('th', null, 'PRODUCT'),
-                    h('th', null, 'QUANTITY'),
-                    h('th', null, 'STATUS'),
+                    renderSortTh('run_date', 'RUN DATE'),
+                    renderSortTh('product', 'PRODUCT'),
+                    renderSortTh('quantity', 'QUANTITY'),
+                    renderSortTh('status', 'STATUS'),
                     h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
-                  filteredProductionRuns.length === 0 ?
+                  sortedProductionRuns.length === 0 ?
                     h('tr', null, h('td', { colSpan: 5, className: 'empty-state' }, 'No production runs match the filter')) :
-                    filteredProductionRuns.map(run =>
+                    sortedProductionRuns.map(run =>
                       h('tr', { key: run.id },
                         h('td', { style: { color: '#64748b', fontFamily: 'var(--font-mono)' } }, formatDate(run.run_date)),
                         h('td', { style: { fontWeight: 700 } }, run.product),
@@ -2656,17 +3221,17 @@ function App() {
               h('table', { className: 'custom-table' },
                 h('thead', null,
                   h('tr', null,
-                    h('th', null, 'EMPLOYEE'),
-                    h('th', null, 'ROLE'),
-                    h('th', null, 'MONTHLY SALARY'),
-                    h('th', null, 'STATUS'),
+                    renderSortTh('name', 'EMPLOYEE'),
+                    renderSortTh('role', 'ROLE'),
+                    renderSortTh('monthly_salary', 'MONTHLY SALARY'),
+                    renderSortTh('status', 'STATUS'),
                     h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
-                  filteredEmployees.length === 0 ?
+                  sortedEmployees.length === 0 ?
                     h('tr', null, h('td', { colSpan: 5, className: 'empty-state' }, 'No employees match the filter criteria')) :
-                    filteredEmployees.map(emp =>
+                    sortedEmployees.map(emp =>
                       h('tr', { key: emp.id },
                         h('td', null,
                           h('div', { style: { fontWeight: 700 } }, emp.name),
@@ -3881,6 +4446,46 @@ function App() {
         onClick: () => setMobileMenuOpen(!mobileMenuOpen)
       }, h(Icon, { name: 'menu', size: 18 }), h('span', null, 'More'))
     ),
+
+    // Mobile Floating Action Button (FAB) Speed Dial
+    h(MobileFloatingActions, {
+      isOpen: fabOpen,
+      onToggle: setFabOpen,
+      onAction: (act) => {
+        if (act === 'sale') { setFormData({}); setModalType('sale'); }
+        else if (act === 'production') { setFormData({}); setModalType('production'); }
+        else if (act === 'expense') { setFormData({}); setModalType('expense'); }
+        else if (act === 'rawMaterial') { setModalType('rawMaterial'); }
+      }
+    }),
+
+    // Global Command Palette & Database Search (Ctrl+K)
+    h(CommandPalette, {
+      isOpen: showCommandPalette,
+      onClose: () => setShowCommandPalette(false),
+      finishedGoods,
+      rawMaterials,
+      sales,
+      employees,
+      onNavigate: (tab, searchVal) => {
+        setActiveTab(tab);
+        if (searchVal) setSearchQuery(searchVal);
+      },
+      onAction: (act) => {
+        if (act === 'sale') { setFormData({}); setModalType('sale'); }
+        else if (act === 'production') { setFormData({}); setModalType('production'); }
+        else if (act === 'expense') { setFormData({}); setModalType('expense'); }
+        else if (act === 'employee') { setFormData({}); setModalType('employee'); }
+        else if (act === 'switchCompany') { setShowCompanyModal(true); }
+        else if (act === 'shortcuts') { setShowShortcutsModal(true); }
+      }
+    }),
+
+    // Keyboard Shortcuts Cheat Sheet Modal
+    h(ShortcutsModal, {
+      isOpen: showShortcutsModal,
+      onClose: () => setShowShortcutsModal(false)
+    }),
 
     // Toast Notification System
     h(ToastContainer, { toasts, onDismiss: removeToast })
