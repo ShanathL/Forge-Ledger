@@ -107,7 +107,7 @@ function exportToCsv(filename, rows, headerMap) {
 }
 
 // Enhanced Asset Valuation Donut Chart (Finished Goods vs Raw Materials)
-function InventoryPieChart({ inventory = [], currency = '₹' }) {
+function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory }) {
   const [hoveredSlice, setHoveredSlice] = useState(null);
 
   let finishedVal = 0;
@@ -258,6 +258,8 @@ function InventoryPieChart({ inventory = [], currency = '₹' }) {
             marginBottom: 8,
             border: isHovered ? `1px solid ${slice.color}` : '1px solid transparent'
           },
+          title: `Click to view ${slice.name} details →`,
+          onClick: () => onSelectCategory && onSelectCategory(slice.name.includes('Raw') ? 'rawMaterials' : 'inventory'),
           onMouseEnter: () => setHoveredSlice(slice.name),
           onMouseLeave: () => setHoveredSlice(null)
         },
@@ -431,6 +433,8 @@ function RawMaterialsPieChart({ rawMaterials = [], currency = '₹' }) {
                   filter: isHovered ? `drop-shadow(0 0 8px ${slice.color})` : 'none',
                   opacity: hoveredSlice && !isHovered ? 0.6 : 1
                 },
+                title: `${slice.name} (Click to view ${slice.name} →)`,
+                onClick: () => onSelectCategory && onSelectCategory(slice.name.includes('Raw') ? 'rawMaterials' : 'inventory'),
                 onMouseEnter: () => setHoveredSlice(slice.name),
                 onMouseLeave: () => setHoveredSlice(null)
               });
@@ -661,6 +665,58 @@ function ProductionStatusChart({ productionRuns = [] }) {
   );
 }
 
+// Payroll Compensation & Department Chart Component
+function PayrollCompensationChart({ employees = [], currency = '₹' }) {
+  const roleMap = {};
+  let totalPayroll = 0;
+
+  (employees || []).forEach(emp => {
+    const role = emp.role || 'Staff';
+    const sal = Number(emp.monthly_salary) || 0;
+    totalPayroll += sal;
+    if (!roleMap[role]) roleMap[role] = { role, total: 0, count: 0 };
+    roleMap[role].total += sal;
+    roleMap[role].count += 1;
+  });
+
+  const roles = Object.values(roleMap).sort((a, b) => b.total - a.total);
+  const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+  return h('div', { className: 'card chart-card', style: { padding: '16px 20px', marginBottom: 20 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+      h('div', null,
+        h('h3', { className: 'card-title' }, 'Payroll Compensation by Role'),
+        h('div', { className: 'card-subtitle' }, 'Monthly compensation allocation across factory staff and operations')
+      ),
+      h('span', { className: 'badge badge-neutral' }, `${roles.length} Role(s) · ${formatCurrency(totalPayroll, currency)} / mo`)
+    ),
+    roles.length === 0 ?
+      h('div', { style: { textAlign: 'center', padding: '24px', color: '#64748b' } }, 'No employees recorded. Click "+ Add employee" above.') :
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+        roles.map((r, i) => {
+          const pct = totalPayroll > 0 ? Math.round((r.total / totalPayroll) * 100) : 0;
+          const color = colors[i % colors.length];
+          return h('div', { key: r.role, style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12.5, fontWeight: 600 } },
+              h('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                h('span', { style: { width: 8, height: 8, borderRadius: '50%', backgroundColor: color } }),
+                r.role,
+                h('span', { style: { fontSize: 11, color: '#64748b', fontWeight: 400 } }, `(${r.count} staff)`)
+              ),
+              h('span', { style: { fontFamily: 'var(--font-mono)' } },
+                `${formatCurrency(r.total, currency)} `,
+                h('span', { style: { color: '#64748b', fontSize: 11, fontWeight: 400 } }, `(${pct}%)`)
+              )
+            ),
+            h('div', { style: { height: 8, borderRadius: 4, background: 'rgba(148, 163, 184, 0.15)', overflow: 'hidden' } },
+              h('div', { style: { width: `${pct}%`, height: '100%', backgroundColor: color, borderRadius: 4, transition: 'width 0.3s ease' } })
+            )
+          );
+        })
+      )
+  );
+}
+
 // Reports Comparison Bar Chart Component
 function ReportsComparisonChart({ reportsData = null, currency = '₹' }) {
   const rows = reportsData?.monthly || [
@@ -827,6 +883,12 @@ function App() {
   // Search Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState('all'); // 'all', 'finished', 'raw', 'low_stock'
+  const [salesFilter, setSalesFilter] = useState('all'); // 'all', 'paid', 'pending', 'overdue'
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all'); // 'all', 'utilities', 'materials', 'maintenance', 'general'
+  const [productionStatusFilter, setProductionStatusFilter] = useState('all'); // 'all', 'in_progress', 'planned', 'completed'
+  const [payrollStatusFilter, setPayrollStatusFilter] = useState('all'); // 'all', 'active', 'inactive'
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   // Modal States
   const [modalType, setModalType] = useState(null); // 'item', 'sale', 'expense', 'employee', 'production'
@@ -887,29 +949,62 @@ function App() {
     });
   }, [finishedGoods, searchQuery, inventoryCategoryFilter]);
 
-  // Filtered Sales
+  // Filtered Sales (Supports Status Filter Pills & Search)
   const filteredSales = useMemo(() => {
     const q = (searchQuery || '').toLowerCase().trim();
     return (sales || []).filter(s => {
       if (!s) return false;
+      if (salesFilter === 'paid' && s.status !== 'Paid') return false;
+      if (salesFilter === 'pending' && s.status !== 'Pending') return false;
+      if (salesFilter === 'overdue' && s.status !== 'Overdue') return false;
       if (!q) return true;
       const customer = (s.customer || '').toLowerCase();
       const invoice = (s.invoice_no || '').toLowerCase();
       return customer.includes(q) || invoice.includes(q);
     });
-  }, [sales, searchQuery]);
+  }, [sales, searchQuery, salesFilter]);
 
-  // Filtered Expenses
+  // Filtered Expenses (Supports Category Filter Pills & Search)
   const filteredExpenses = useMemo(() => {
     const q = (searchQuery || '').toLowerCase().trim();
     return (expenses || []).filter(e => {
       if (!e) return false;
+      if (expenseCategoryFilter !== 'all' && (e.category || '').toLowerCase() !== expenseCategoryFilter.toLowerCase()) return false;
       if (!q) return true;
       const desc = (e.description || '').toLowerCase();
       const cat = (e.category || '').toLowerCase();
       return desc.includes(q) || cat.includes(q);
     });
-  }, [expenses, searchQuery]);
+  }, [expenses, searchQuery, expenseCategoryFilter]);
+
+  // Filtered Production Runs (Supports Status Filter Pills & Search)
+  const filteredProductionRuns = useMemo(() => {
+    const q = (searchQuery || '').toLowerCase().trim();
+    return (productionRuns || []).filter(r => {
+      if (!r) return false;
+      if (productionStatusFilter === 'in_progress' && r.status !== 'In progress') return false;
+      if (productionStatusFilter === 'planned' && r.status !== 'Planned') return false;
+      if (productionStatusFilter === 'completed' && r.status !== 'Completed') return false;
+      if (!q) return true;
+      const prod = (r.product || '').toLowerCase();
+      const date = (r.run_date || '').toLowerCase();
+      return prod.includes(q) || date.includes(q);
+    });
+  }, [productionRuns, searchQuery, productionStatusFilter]);
+
+  // Filtered Employees (Supports Active/Inactive Filter Pills & Search)
+  const filteredEmployees = useMemo(() => {
+    const q = (searchQuery || '').toLowerCase().trim();
+    return (employees || []).filter(emp => {
+      if (!emp) return false;
+      if (payrollStatusFilter === 'active' && emp.status !== 'Active') return false;
+      if (payrollStatusFilter === 'inactive' && emp.status !== 'Inactive') return false;
+      if (!q) return true;
+      const name = (emp.name || '').toLowerCase();
+      const role = (emp.role || '').toLowerCase();
+      return name.includes(q) || role.includes(q);
+    });
+  }, [employees, searchQuery, payrollStatusFilter]);
 
   const distinctExpenseCategories = useMemo(() => {
     return new Set((expenses || []).map(e => e?.category || 'General')).size;
@@ -1016,8 +1111,10 @@ function App() {
 
   function handleCreateSale(e) {
     e.preventDefault();
-    fetch('/api/sales', {
-      method: 'POST',
+    const endpoint = formData.id ? `/api/sales/${formData.id}` : '/api/sales';
+    const method = formData.id ? 'PUT' : 'POST';
+    fetch(endpoint, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
     })
@@ -1027,18 +1124,20 @@ function App() {
           setModalType(null);
           setFormData({});
           loadAllData();
-          addToast('Sales invoice created successfully!', 'success');
+          addToast(formData.id ? 'Sales invoice updated!' : 'Sales invoice created successfully!', 'success');
         } else {
-          addToast(res.error || 'Failed to create sales invoice', 'error');
+          addToast(res.error || 'Failed to save sales invoice', 'error');
         }
       })
-      .catch(err => addToast(err.message || 'Network error creating invoice', 'error'));
+      .catch(err => addToast(err.message || 'Network error saving invoice', 'error'));
   }
 
   function handleCreateExpense(e) {
     e.preventDefault();
-    fetch('/api/expenses', {
-      method: 'POST',
+    const endpoint = formData.id ? `/api/expenses/${formData.id}` : '/api/expenses';
+    const method = formData.id ? 'PUT' : 'POST';
+    fetch(endpoint, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
     })
@@ -1048,12 +1147,12 @@ function App() {
           setModalType(null);
           setFormData({});
           loadAllData();
-          addToast('Expense recorded successfully!', 'success');
+          addToast(formData.id ? 'Expense updated successfully!' : 'Expense recorded successfully!', 'success');
         } else {
-          addToast(res.error || 'Failed to record expense', 'error');
+          addToast(res.error || 'Failed to save expense', 'error');
         }
       })
-      .catch(err => addToast(err.message || 'Network error recording expense', 'error'));
+      .catch(err => addToast(err.message || 'Network error saving expense', 'error'));
   }
 
   function handleCreateProduction(e) {
@@ -1079,8 +1178,10 @@ function App() {
 
   function handleCreateEmployee(e) {
     e.preventDefault();
-    fetch('/api/employees', {
-      method: 'POST',
+    const endpoint = formData.id ? `/api/employees/${formData.id}` : '/api/employees';
+    const method = formData.id ? 'PUT' : 'POST';
+    fetch(endpoint, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
     })
@@ -1090,7 +1191,7 @@ function App() {
           setModalType(null);
           setFormData({});
           loadAllData();
-          addToast('Employee profile added successfully!', 'success');
+          addToast(formData.id ? 'Employee profile updated!' : 'Employee profile added successfully!', 'success');
         } else {
           addToast(res.error || 'Failed to save employee profile', 'error');
         }
@@ -1469,7 +1570,7 @@ function App() {
                 }, 'Manage goods →')
               ),
               h('div', { style: { padding: '18px 20px' } },
-                h(InventoryPieChart, { inventory, currency: '₹' })
+                h(InventoryPieChart, { inventory, currency: '₹', onSelectCategory: (tab) => setActiveTab(tab) })
               )
             ),
 
@@ -1851,7 +1952,7 @@ function App() {
             h('div', null,
               h('div', { className: 'page-subtitle' }, 'REVENUE & INVOICES'),
               h('h1', { className: 'page-title' }, 'Sales & invoices'),
-              h('p', { className: 'page-desc' }, 'Create sales with multiple inventory items and track invoice totals.')
+              h('p', { className: 'page-desc' }, 'Manage customer orders, track payments, and print GST tax invoices.')
             ),
             h('div', { className: 'header-actions' },
               h('button', {
@@ -1871,38 +1972,60 @@ function App() {
             )
           ),
 
-          // 3 Metric Cards (Fig. 5)
+          // 3 Metric Cards for Sales
           h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Total invoices')
+                h('span', { className: 'metric-label' }, 'Total invoices'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'sales' }))
               ),
-              h('div', { className: 'metric-value' }, sales.length)
+              h('div', { className: 'metric-value' }, sales.length),
+              h('div', { className: 'metric-footer' }, 'Generated invoices')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Recorded revenue')
+                h('span', { className: 'metric-label' }, 'Collected revenue'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'checkCircle' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.paidSales || 48600))
+              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.paidSales || 48600)),
+              h('div', { className: 'metric-footer success' }, 'Paid & cleared')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Pending payments')
+                h('span', { className: 'metric-label' }, 'Pending receivables'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'alertCircle' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.pendingSales || 32400))
+              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.pendingSales || 32400)),
+              h('div', { className: 'metric-footer warning' }, 'Awaiting payment')
             )
           ),
 
           // Sales Invoice Payment Status Chart
           h(SalesStatusChart, { sales, currency: '₹' }),
 
-          // Search Bar Row (Fig. 5)
+          // Status Filter Pills
+          h('div', { className: 'filter-pills-row' },
+            [
+              { id: 'all', label: `All invoices (${sales.length})` },
+              { id: 'paid', label: `Paid (${sales.filter(s => s.status === 'Paid').length})` },
+              { id: 'pending', label: `Pending (${sales.filter(s => s.status === 'Pending').length})` },
+              { id: 'overdue', label: `Overdue (${sales.filter(s => s.status === 'Overdue').length})` }
+            ].map(pill =>
+              h('button', {
+                key: pill.id,
+                className: `filter-pill ${salesFilter === pill.id ? 'active' : ''}`,
+                onClick: () => setSalesFilter(pill.id)
+              }, pill.label)
+            )
+          ),
+
+          // Search Bar Row
           h('div', { className: 'search-bar-row' },
             h('div', { className: 'search-wrapper' },
               h(Icon, { name: 'search', size: 15, className: 'search-icon' }),
               h('input', {
                 className: 'search-input',
-                placeholder: 'Search invoice or customer...',
+                placeholder: 'Search invoice number or customer name...',
                 value: searchQuery,
                 onChange: e => setSearchQuery(e.target.value)
               })
@@ -1910,7 +2033,7 @@ function App() {
             h('div', { className: 'item-count-label' }, `${filteredSales.length} invoices`)
           ),
 
-          // Sales Table (Fig. 5)
+          // Sales Table
           h('div', { className: 'card' },
             h('div', { className: 'table-responsive' },
               h('table', { className: 'custom-table' },
@@ -1920,21 +2043,21 @@ function App() {
                     h('th', null, 'CUSTOMER'),
                     h('th', null, 'DATE'),
                     h('th', null, 'SUBTOTAL'),
-                    h('th', null, 'GST'),
+                    h('th', null, 'GST (5%)'),
                     h('th', null, 'STATUS'),
                     h('th', { style: { textAlign: 'right' } }, 'TOTAL'),
-                    h('th', { style: { width: 60 } }, '')
+                    h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
                   filteredSales.length === 0 ?
-                    h('tr', null, h('td', { colSpan: 8, className: 'empty-state' }, 'No sales invoices recorded')) :
+                    h('tr', null, h('td', { colSpan: 8, className: 'empty-state' }, 'No sales invoices match your filters.')) :
                     filteredSales.map(sale =>
                       h('tr', { key: sale.id },
                         h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 700 } }, sale.invoice_no),
                         h('td', null,
                           h('div', { style: { fontWeight: 600 } }, sale.customer),
-                          h('div', { style: { fontSize: 11, color: '#64748b' } }, '9999999999')
+                          h('div', { style: { fontSize: 11, color: '#64748b' } }, 'Customer Order')
                         ),
                         h('td', { style: { color: '#64748b' } }, formatDate(sale.issued_date)),
                         h('td', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(Number(sale.amount) / 1.05)),
@@ -1946,11 +2069,34 @@ function App() {
                         ),
                         h('td', { style: { textAlign: 'right', fontWeight: 800, fontFamily: 'var(--font-mono)' } }, formatCurrency(sale.amount)),
                         h('td', { style: { textAlign: 'right' } },
-                          h('button', {
-                            className: 'btn btn-danger-outline',
-                            style: { padding: '4px 8px' },
-                            onClick: () => handleDelete('sales', sale.id)
-                          }, h(Icon, { name: 'trash', size: 13 }))
+                          h('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
+                            h('button', {
+                              className: 'btn btn-outline',
+                              style: { padding: '4px 8px', fontSize: 11.5 },
+                              title: 'View & Print Tax Invoice',
+                              onClick: () => { setSelectedInvoice(sale); setModalType('invoicePreview'); }
+                            }, '🖨️ Invoice'),
+                            sale.status !== 'Paid' && h('button', {
+                              className: 'btn btn-outline',
+                              style: { padding: '4px 8px', fontSize: 11.5, color: '#059669', borderColor: '#10b981' },
+                              title: 'Mark as Paid',
+                              onClick: () => {
+                                fetch(`/api/sales/${sale.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ ...sale, status: 'Paid' })
+                                }).then(() => {
+                                  loadAllData();
+                                  addToast(`Invoice ${sale.invoice_no} marked as Paid!`, 'success');
+                                });
+                              }
+                            }, 'Paid ✓'),
+                            h('button', {
+                              className: 'btn btn-danger-outline',
+                              style: { padding: '4px 8px' },
+                              onClick: () => handleDelete('sales', sale.id)
+                            }, h(Icon, { name: 'trash', size: 13 }))
+                          )
                         )
                       )
                     )
@@ -1966,45 +2112,80 @@ function App() {
             h('div', null,
               h('div', { className: 'page-subtitle' }, 'COSTS & OUTGOINGS'),
               h('h1', { className: 'page-title' }, 'Expenses'),
-              h('p', { className: 'page-desc' }, 'Record and review your business spending.')
+              h('p', { className: 'page-desc' }, 'Record, categorize and review all factory operating expenses.')
             ),
-            h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('expense'); } },
-              h(Icon, { name: 'plus' }), 'Add expense'
+            h('div', { className: 'header-actions' },
+              h('button', {
+                className: 'btn btn-outline',
+                onClick: () => exportToCsv('forgeledger_expenses', expenses, {
+                  description: 'Description',
+                  category: 'Category',
+                  expense_date: 'Date',
+                  payment_method: 'Payment Method',
+                  amount: 'Amount (INR)'
+                })
+              }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
+              h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('expense'); } },
+                h(Icon, { name: 'plus' }), 'Add expense'
+              )
             )
           ),
 
-          // 3 Metric Cards (Fig. 6)
+          // 3 Metric Cards for Expenses
           h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Total records')
+                h('span', { className: 'metric-label' }, 'Total records'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'expenses' }))
               ),
-              h('div', { className: 'metric-value' }, expenses.length)
+              h('div', { className: 'metric-value' }, expenses.length),
+              h('div', { className: 'metric-footer' }, 'Recorded expenditures')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Total expenses')
+                h('span', { className: 'metric-label' }, 'Total expenses'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'expenses' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.totalExpenses || 59950))
+              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.totalExpenses || 59950)),
+              h('div', { className: 'metric-footer' }, 'Operational outflow')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Categories')
+                h('span', { className: 'metric-label' }, 'Active categories'),
+                h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'overview' }))
               ),
-              h('div', { className: 'metric-value' }, distinctExpenseCategories || 3)
+              h('div', { className: 'metric-value' }, distinctExpenseCategories || 3),
+              h('div', { className: 'metric-footer' }, 'Expense heads')
             )
           ),
 
           // Expenses Outflow by Category Chart
           h(ExpenseCategoryChart, { expenses, currency: '₹' }),
 
-          // Search Row (Fig. 6)
+          // Category Filter Pills
+          h('div', { className: 'filter-pills-row' },
+            [
+              { id: 'all', label: `All expenses (${expenses.length})` },
+              { id: 'Utilities', label: `Utilities (${expenses.filter(e => (e.category || '').toLowerCase() === 'utilities').length})` },
+              { id: 'Materials', label: `Materials (${expenses.filter(e => (e.category || '').toLowerCase() === 'materials').length})` },
+              { id: 'Maintenance', label: `Maintenance (${expenses.filter(e => (e.category || '').toLowerCase() === 'maintenance').length})` },
+              { id: 'General', label: `General (${expenses.filter(e => (e.category || '').toLowerCase() === 'general').length})` }
+            ].map(pill =>
+              h('button', {
+                key: pill.id,
+                className: `filter-pill ${expenseCategoryFilter === pill.id ? 'active' : ''}`,
+                onClick: () => setExpenseCategoryFilter(pill.id)
+              }, pill.label)
+            )
+          ),
+
+          // Search Row
           h('div', { className: 'search-bar-row' },
             h('div', { className: 'search-wrapper' },
               h(Icon, { name: 'search', size: 15, className: 'search-icon' }),
               h('input', {
                 className: 'search-input',
-                placeholder: 'Search expenses or categories...',
+                placeholder: 'Search expense description or category...',
                 value: searchQuery,
                 onChange: e => setSearchQuery(e.target.value)
               })
@@ -2012,7 +2193,7 @@ function App() {
             h('div', { className: 'item-count-label' }, `${filteredExpenses.length} records`)
           ),
 
-          // Expenses Table (Fig. 6)
+          // Expenses Table
           h('div', { className: 'card' },
             h('div', { className: 'table-responsive' },
               h('table', { className: 'custom-table' },
@@ -2023,25 +2204,32 @@ function App() {
                     h('th', null, 'DATE'),
                     h('th', null, 'PAYMENT METHOD'),
                     h('th', null, 'AMOUNT'),
-                    h('th', { style: { textAlign: 'right' } }, 'ACTION')
+                    h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
                   filteredExpenses.length === 0 ?
-                    h('tr', null, h('td', { colSpan: 6, className: 'empty-state' }, 'No expenses found')) :
+                    h('tr', null, h('td', { colSpan: 6, className: 'empty-state' }, 'No expense records found')) :
                     filteredExpenses.map(exp =>
                       h('tr', { key: exp.id },
                         h('td', { style: { fontWeight: 600 } }, exp.description),
                         h('td', null, h('span', { className: 'badge badge-neutral' }, exp.category)),
-                        h('td', { style: { color: '#64748b' } }, exp.expense_date),
+                        h('td', { style: { color: '#64748b' } }, formatDate(exp.expense_date)),
                         h('td', { style: { color: '#64748b' } }, exp.payment_method),
                         h('td', { style: { fontWeight: 700, fontFamily: 'var(--font-mono)' } }, formatCurrency(exp.amount)),
                         h('td', { style: { textAlign: 'right' } },
-                          h('button', {
-                            className: 'btn btn-danger-outline',
-                            style: { padding: '4px 8px' },
-                            onClick: () => handleDelete('expenses', exp.id)
-                          }, h(Icon, { name: 'trash', size: 13 }))
+                          h('div', { style: { display: 'inline-flex', gap: 6 } },
+                            h('button', {
+                              className: 'btn btn-outline',
+                              style: { padding: '4px 8px', fontSize: 11.5 },
+                              onClick: () => { setFormData(exp); setModalType('expense'); }
+                            }, 'Edit'),
+                            h('button', {
+                              className: 'btn btn-danger-outline',
+                              style: { padding: '4px 8px' },
+                              onClick: () => handleDelete('expenses', exp.id)
+                            }, h(Icon, { name: 'trash', size: 13 }))
+                          )
                         )
                       )
                     )
@@ -2197,8 +2385,19 @@ function App() {
               h('h1', { className: 'page-title' }, 'Production'),
               h('p', { className: 'page-desc' }, 'Track manufacturing batches, planned dates, and finished output.')
             ),
-            h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('production'); } },
-              h(Icon, { name: 'plus' }), 'New production run'
+            h('div', { className: 'header-actions' },
+              h('button', {
+                className: 'btn btn-outline',
+                onClick: () => exportToCsv('forgeledger_production_runs', productionRuns, {
+                  run_date: 'Run Date',
+                  product: 'Target Product',
+                  quantity: 'Planned Quantity',
+                  status: 'Status'
+                })
+              }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
+              h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('production'); } },
+                h(Icon, { name: 'plus' }), 'New production run'
+              )
             )
           ),
 
@@ -2206,29 +2405,72 @@ function App() {
           h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Total Batches')
+                h('span', { className: 'metric-label' }, 'Total Batches'),
+                h('span', { className: 'metric-badge metric-neutral' }, 'All time')
               ),
-              h('div', { className: 'metric-value' }, productionRuns.length)
+              h('div', { className: 'metric-value' }, productionRuns.length),
+              h('div', { className: 'metric-footer' }, 'Batches scheduled or completed')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'In-Progress Jobs')
+                h('span', { className: 'metric-label' }, 'In-Progress Jobs'),
+                h('span', { className: 'metric-badge metric-warning' }, 'Active floor')
               ),
-              h('div', { className: 'metric-value' }, productionRuns.filter(r => r.status === 'In progress').length)
+              h('div', { className: 'metric-value', style: { color: '#2563eb' } }, productionRuns.filter(r => r.status === 'In progress').length),
+              h('div', { className: 'metric-footer' }, 'Active manufacturing runs')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Completed Batches')
+                h('span', { className: 'metric-label' }, 'Completed Batches'),
+                h('span', { className: 'metric-badge metric-success' }, 'Finished')
               ),
-              h('div', { className: 'metric-value' }, productionRuns.filter(r => r.status === 'Completed').length)
+              h('div', { className: 'metric-value', style: { color: '#059669' } }, productionRuns.filter(r => r.status === 'Completed').length),
+              h('div', { className: 'metric-footer' }, 'Delivered to finished inventory')
             )
           ),
 
           // Production Batch Health & Status Chart
           h(ProductionStatusChart, { productionRuns }),
 
+          // Filter Pills Bar (All, In progress, Planned, Completed) + Search Bar
+          h('div', { className: 'table-controls' },
+            h('div', { className: 'filter-pills' },
+              h('button', {
+                className: `filter-pill ${productionStatusFilter === 'all' ? 'active' : ''}`,
+                onClick: () => setProductionStatusFilter('all')
+              }, 'All Batches', h('span', { className: 'pill-count' }, productionRuns.length)),
+              h('button', {
+                className: `filter-pill ${productionStatusFilter === 'in_progress' ? 'active' : ''}`,
+                onClick: () => setProductionStatusFilter('in_progress')
+              }, 'In Progress', h('span', { className: 'pill-count' }, productionRuns.filter(r => r.status === 'In progress').length)),
+              h('button', {
+                className: `filter-pill ${productionStatusFilter === 'planned' ? 'active' : ''}`,
+                onClick: () => setProductionStatusFilter('planned')
+              }, 'Planned', h('span', { className: 'pill-count' }, productionRuns.filter(r => r.status === 'Planned').length)),
+              h('button', {
+                className: `filter-pill ${productionStatusFilter === 'completed' ? 'active' : ''}`,
+                onClick: () => setProductionStatusFilter('completed')
+              }, 'Completed', h('span', { className: 'pill-count' }, productionRuns.filter(r => r.status === 'Completed').length))
+            ),
+            h('div', { className: 'search-wrapper' },
+              h('span', { className: 'search-icon' }, h(Icon, { name: 'search', size: 14 })),
+              h('input', {
+                type: 'text',
+                className: 'search-input',
+                placeholder: 'Search product or date...',
+                value: searchQuery,
+                onChange: e => setSearchQuery(e.target.value)
+              }),
+              searchQuery && h('button', { className: 'search-clear', onClick: () => setSearchQuery('') }, '✕')
+            )
+          ),
+
           // Production Table
           h('div', { className: 'card' },
+            h('div', { className: 'card-header' },
+              h('h3', { className: 'card-title' }, 'Manufacturing Queue & Completed Batches'),
+              h('div', { className: 'item-count-label' }, `Showing ${filteredProductionRuns.length} of ${productionRuns.length} batches`)
+            ),
             h('div', { className: 'table-responsive' },
               h('table', { className: 'custom-table' },
                 h('thead', null,
@@ -2237,34 +2479,53 @@ function App() {
                     h('th', null, 'PRODUCT'),
                     h('th', null, 'QUANTITY'),
                     h('th', null, 'STATUS'),
-                    h('th', { style: { textAlign: 'right' } }, 'ACTION')
+                    h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
-                  productionRuns.length === 0 ?
-                    h('tr', null, h('td', { colSpan: 5, className: 'empty-state' }, 'No production runs recorded')) :
-                    productionRuns.map(run =>
+                  filteredProductionRuns.length === 0 ?
+                    h('tr', null, h('td', { colSpan: 5, className: 'empty-state' }, 'No production runs match the filter')) :
+                    filteredProductionRuns.map(run =>
                       h('tr', { key: run.id },
-                        h('td', { style: { color: '#64748b' } }, run.run_date),
+                        h('td', { style: { color: '#64748b', fontFamily: 'var(--font-mono)' } }, formatDate(run.run_date)),
                         h('td', { style: { fontWeight: 700 } }, run.product),
-                        h('td', { style: { fontWeight: 800, fontFamily: 'var(--font-mono)' } }, `${run.quantity} units`),
+                        h('td', { style: { fontWeight: 800, fontFamily: 'var(--font-mono)' } }, `${Number(run.quantity).toLocaleString()} units`),
                         h('td', null,
                           h('span', {
                             className: `badge ${run.status === 'Completed' ? 'badge-success' : run.status === 'In progress' ? 'badge-warning' : 'badge-info'}`
                           }, run.status)
                         ),
                         h('td', { style: { textAlign: 'right' } },
-                          run.status !== 'Completed' && h('button', {
-                            className: 'btn btn-outline',
-                            style: { padding: '4px 8px', fontSize: 11.5 },
-                            onClick: () => {
-                              fetch(`/api/production/${run.id}/status`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'Completed' })
-                              }).then(() => loadAllData());
-                            }
-                          }, 'Mark Completed')
+                          h('div', { style: { display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' } },
+                            run.status !== 'Completed' && h('button', {
+                              className: 'btn btn-outline',
+                              style: { padding: '4px 8px', fontSize: 11.5, borderColor: '#10b981', color: '#059669' },
+                              onClick: () => {
+                                fetch(`/api/production/${run.id}/status`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: 'Completed' })
+                                }).then(() => {
+                                  if (window.__showToast) window.__showToast(`Batch for ${run.product} marked as completed!`, 'success');
+                                  loadAllData();
+                                });
+                              }
+                            }, '✓ Complete'),
+                            h('button', {
+                              className: 'btn btn-danger-outline',
+                              style: { padding: '4px 8px' },
+                              title: 'Delete run',
+                              onClick: () => {
+                                if (confirm(`Delete production run for "${run.product}"?`)) {
+                                  fetch(`/api/production/${run.id}`, { method: 'DELETE' })
+                                    .then(() => {
+                                      if (window.__showToast) window.__showToast('Production run deleted', 'info');
+                                      loadAllData();
+                                    });
+                                }
+                              }
+                            }, h(Icon, { name: 'trash', size: 13 }))
+                          )
                         )
                       )
                     )
@@ -2278,39 +2539,94 @@ function App() {
         activeTab === 'payroll' && h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
-              h('div', { className: 'page-subtitle' }, 'HUMAN RESOURCES'),
+              h('div', { className: 'page-subtitle' }, 'HUMAN RESOURCES & COMPENSATION'),
               h('h1', { className: 'page-title' }, 'Payroll'),
-              h('p', { className: 'page-desc' }, 'Manage employee compensation, roles and monthly salaries.')
+              h('p', { className: 'page-desc' }, 'Manage employee compensation, role allocations, monthly salary disbursements and printable payslips.')
             ),
-            h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('employee'); } },
-              h(Icon, { name: 'plus' }), 'Add employee'
+            h('div', { className: 'header-actions' },
+              h('button', {
+                className: 'btn btn-outline',
+                onClick: () => exportToCsv('forgeledger_employees_payroll', employees, {
+                  name: 'Employee Name',
+                  role: 'Role / Designation',
+                  monthly_salary: 'Monthly Salary (INR)',
+                  status: 'Status'
+                })
+              }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
+              h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('employee'); } },
+                h(Icon, { name: 'plus' }), 'Add employee'
+              )
             )
           ),
 
-          // 3 Metric Cards
+          // 3 Metric Cards for Payroll
           h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Total staff')
+                h('span', { className: 'metric-label' }, 'Total Staff'),
+                h('span', { className: 'metric-badge metric-neutral' }, 'Headcount')
               ),
-              h('div', { className: 'metric-value' }, employees.length)
+              h('div', { className: 'metric-value' }, employees.length),
+              h('div', { className: 'metric-footer' }, 'Registered employees on company payroll')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Monthly payroll')
+                h('span', { className: 'metric-label' }, 'Monthly Payroll Outflow'),
+                h('span', { className: 'metric-badge metric-warning' }, 'Disbursement')
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.monthlyPayroll || 28000))
+              h('div', { className: 'metric-value', style: { color: '#0284c7' } },
+                formatCurrency(employees.filter(e => e.status === 'Active').reduce((sum, e) => sum + (Number(e.monthly_salary) || 0), 0) || dashboard?.monthlyPayroll || 28000)
+              ),
+              h('div', { className: 'metric-footer' }, 'Estimated active monthly compensation')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Active employees')
+                h('span', { className: 'metric-label' }, 'Active Workforce'),
+                h('span', { className: 'metric-badge metric-success' }, 'Active')
               ),
-              h('div', { className: 'metric-value' }, employees.filter(e => e.status === 'Active').length)
+              h('div', { className: 'metric-value', style: { color: '#059669' } }, employees.filter(e => e.status === 'Active').length),
+              h('div', { className: 'metric-footer' }, `${employees.filter(e => e.status !== 'Active').length} inactive / on-leave`)
+            )
+          ),
+
+          // Payroll Compensation by Role Chart
+          h(PayrollCompensationChart, { employees, currency: '₹' }),
+
+          // Filter Pills Bar (All, Active, Inactive) + Search Bar
+          h('div', { className: 'table-controls' },
+            h('div', { className: 'filter-pills' },
+              h('button', {
+                className: `filter-pill ${payrollStatusFilter === 'all' ? 'active' : ''}`,
+                onClick: () => setPayrollStatusFilter('all')
+              }, 'All Staff', h('span', { className: 'pill-count' }, employees.length)),
+              h('button', {
+                className: `filter-pill ${payrollStatusFilter === 'active' ? 'active' : ''}`,
+                onClick: () => setPayrollStatusFilter('active')
+              }, 'Active', h('span', { className: 'pill-count' }, employees.filter(e => e.status === 'Active').length)),
+              h('button', {
+                className: `filter-pill ${payrollStatusFilter === 'inactive' ? 'active' : ''}`,
+                onClick: () => setPayrollStatusFilter('inactive')
+              }, 'Inactive', h('span', { className: 'pill-count' }, employees.filter(e => e.status !== 'Active').length))
+            ),
+            h('div', { className: 'search-wrapper' },
+              h('span', { className: 'search-icon' }, h(Icon, { name: 'search', size: 14 })),
+              h('input', {
+                type: 'text',
+                className: 'search-input',
+                placeholder: 'Search employee name or role...',
+                value: searchQuery,
+                onChange: e => setSearchQuery(e.target.value)
+              }),
+              searchQuery && h('button', { className: 'search-clear', onClick: () => setSearchQuery('') }, '✕')
             )
           ),
 
           // Employees Table
           h('div', { className: 'card' },
+            h('div', { className: 'card-header' },
+              h('h3', { className: 'card-title' }, 'Employee Directory & Salary Registry'),
+              h('div', { className: 'item-count-label' }, `Showing ${filteredEmployees.length} of ${employees.length} employees`)
+            ),
             h('div', { className: 'table-responsive' },
               h('table', { className: 'custom-table' },
                 h('thead', null,
@@ -2319,26 +2635,52 @@ function App() {
                     h('th', null, 'ROLE'),
                     h('th', null, 'MONTHLY SALARY'),
                     h('th', null, 'STATUS'),
-                    h('th', { style: { textAlign: 'right' } }, 'ACTION')
+                    h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
                   )
                 ),
                 h('tbody', null,
-                  employees.length === 0 ?
-                    h('tr', null, h('td', { colSpan: 5, className: 'empty-state' }, 'No employees recorded')) :
-                    employees.map(emp =>
+                  filteredEmployees.length === 0 ?
+                    h('tr', null, h('td', { colSpan: 5, className: 'empty-state' }, 'No employees match the filter criteria')) :
+                    filteredEmployees.map(emp =>
                       h('tr', { key: emp.id },
-                        h('td', { style: { fontWeight: 700 } }, emp.name),
-                        h('td', null, emp.role),
-                        h('td', { style: { fontWeight: 800, fontFamily: 'var(--font-mono)' } }, formatCurrency(emp.monthly_salary)),
+                        h('td', null,
+                          h('div', { style: { fontWeight: 700 } }, emp.name),
+                          h('div', { style: { fontSize: 11, color: '#64748b', fontFamily: 'var(--font-mono)' } }, `EMP-${String(emp.id).padStart(4, '0')}`)
+                        ),
+                        h('td', null,
+                          h('span', { style: { fontWeight: 500 } }, emp.role)
+                        ),
+                        h('td', { style: { fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#0f172a' } }, formatCurrency(emp.monthly_salary)),
                         h('td', null,
                           h('span', { className: `badge ${emp.status === 'Active' ? 'badge-success' : 'badge-warning'}` }, emp.status)
                         ),
                         h('td', { style: { textAlign: 'right' } },
-                          h('button', {
-                            className: 'btn btn-danger-outline',
-                            style: { padding: '4px 8px' },
-                            onClick: () => handleDelete('employees', emp.id)
-                          }, h(Icon, { name: 'trash', size: 13 }))
+                          h('div', { style: { display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' } },
+                            h('button', {
+                              className: 'btn btn-outline',
+                              style: { padding: '4px 9px', fontSize: 11.5, borderColor: '#3b82f6', color: '#2563eb' },
+                              title: 'View & Print Salary Payslip',
+                              onClick: () => {
+                                setSelectedEmployee(emp);
+                                setModalType('payslipPreview');
+                              }
+                            }, '📄 Payslip'),
+                            h('button', {
+                              className: 'btn btn-outline',
+                              style: { padding: '4px 8px' },
+                              title: 'Edit employee',
+                              onClick: () => {
+                                setFormData({ ...emp });
+                                setModalType('employee');
+                              }
+                            }, h(Icon, { name: 'edit', size: 13 })),
+                            h('button', {
+                              className: 'btn btn-danger-outline',
+                              style: { padding: '4px 8px' },
+                              title: 'Delete employee',
+                              onClick: () => handleDelete('employees', emp.id)
+                            }, h(Icon, { name: 'trash', size: 13 }))
+                          )
                         )
                       )
                     )
@@ -2352,35 +2694,58 @@ function App() {
         activeTab === 'reports' && h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
-              h('div', { className: 'page-subtitle' }, 'BUSINESS ANALYTICS'),
+              h('div', { className: 'page-subtitle' }, 'FINANCIAL & BUSINESS ANALYTICS'),
               h('h1', { className: 'page-title' }, 'Reports'),
-              h('p', { className: 'page-desc' }, 'Operational sales, expenses and net monthly performance summaries.')
+              h('p', { className: 'page-desc' }, 'Operational sales, expenses, and net profit margins across active financial months.')
+            ),
+            h('div', { className: 'header-actions' },
+              h('button', {
+                className: 'btn btn-outline',
+                onClick: () => exportToCsv('forgeledger_monthly_financial_report', reportsData?.monthly || [
+                  { month: '2026-09', sales: reportsData?.totalSales || 129200, expenses: reportsData?.totalExpenses || 59950, net: reportsData?.netMargin || 69250 }
+                ], {
+                  month: 'Month Period',
+                  sales: 'Total Invoiced Sales (INR)',
+                  expenses: 'Total Incurred Expenses (INR)',
+                  net: 'Net Operating Profit (INR)'
+                })
+              }, h(Icon, { name: 'download', size: 14 }), 'Export Financial CSV')
             )
           ),
 
-          // 3 Summary Cards
-          h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
-            h('div', { className: 'metric-card' },
-              h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Total Sales')
+          // 3 Summary Cards with Net Margin Ratio
+          (() => {
+            const totSales = reportsData?.totalSales || 129200;
+            const totExp = reportsData?.totalExpenses || 59950;
+            const netMgn = reportsData?.netMargin !== undefined ? reportsData.netMargin : (totSales - totExp);
+            const mgnPct = totSales > 0 ? ((netMgn / totSales) * 100).toFixed(1) : 0;
+            return h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
+              h('div', { className: 'metric-card' },
+                h('div', { className: 'metric-top' },
+                  h('span', { className: 'metric-label' }, 'Total Invoiced Sales'),
+                  h('span', { className: 'metric-badge metric-success' }, 'Revenue')
+                ),
+                h('div', { className: 'metric-value' }, formatCurrency(totSales)),
+                h('div', { className: 'metric-footer' }, 'Gross sales across all customer invoices')
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(reportsData?.totalSales || 129200))
-            ),
-            h('div', { className: 'metric-card' },
-              h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Total Expenses')
+              h('div', { className: 'metric-card' },
+                h('div', { className: 'metric-top' },
+                  h('span', { className: 'metric-label' }, 'Total Operating Expenses'),
+                  h('span', { className: 'metric-badge metric-danger' }, 'Outflows')
+                ),
+                h('div', { className: 'metric-value', style: { color: '#dc2626' } }, formatCurrency(totExp)),
+                h('div', { className: 'metric-footer' }, 'Utilities, raw materials, payroll & maintenance')
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(reportsData?.totalExpenses || 59950))
-            ),
-            h('div', { className: 'metric-card' },
-              h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Net Operational Margin')
-              ),
-              h('div', { className: 'metric-value', style: { color: (reportsData?.netMargin || 69250) >= 0 ? '#059669' : '#dc2626' } },
-                formatCurrency(reportsData?.netMargin || 69250)
+              h('div', { className: 'metric-card' },
+                h('div', { className: 'metric-top' },
+                  h('span', { className: 'metric-label' }, 'Net Operating Margin'),
+                  h('span', { className: `metric-badge ${netMgn >= 0 ? 'metric-success' : 'metric-danger'}` }, `${mgnPct}% margin`)
+                ),
+                h('div', { className: 'metric-value', style: { color: netMgn >= 0 ? '#059669' : '#dc2626' } }, formatCurrency(netMgn)),
+                h('div', { className: 'metric-footer' }, `${netMgn >= 0 ? 'Profitable operational health' : 'Operating at a loss'}`)
               )
-            )
-          ),
+            );
+          })(),
 
           // Monthly Revenue vs Expenses Comparison Chart
           h(ReportsComparisonChart, { reportsData, currency: '₹' }),
@@ -2389,36 +2754,46 @@ function App() {
           h('div', { className: 'card' },
             h('div', { className: 'card-header' },
               h('h3', { className: 'card-title' }, 'Monthly Performance Summary'),
-              h('div', { className: 'item-count-label' }, 'Aggregated by issue and expense dates')
+              h('div', { className: 'item-count-label' }, 'Aggregated revenue, expenses & profit margin ratios')
             ),
             h('div', { className: 'table-responsive' },
               h('table', { className: 'custom-table' },
                 h('thead', null,
                   h('tr', null,
-                    h('th', null, 'MONTH'),
-                    h('th', null, 'SALES'),
+                    h('th', null, 'MONTH PERIOD'),
+                    h('th', null, 'INVOICED SALES'),
                     h('th', null, 'EXPENSES'),
+                    h('th', null, 'PROFIT MARGIN %'),
                     h('th', { style: { textAlign: 'right' } }, 'NET MARGIN')
                   )
                 ),
                 h('tbody', null,
-                  (reportsData?.monthly || [
+                  (reportsData?.monthly && reportsData.monthly.length > 0 ? reportsData.monthly : [
                     { month: '2026-09', sales: 129200, expenses: 59950, net: 69250 }
-                  ]).map(row =>
-                    h('tr', { key: row.month },
+                  ]).map(row => {
+                    const rowSales = Number(row.sales) || 0;
+                    const rowNet = Number(row.net) || (rowSales - (Number(row.expenses) || 0));
+                    const rowPct = rowSales > 0 ? ((rowNet / rowSales) * 100).toFixed(1) : '0.0';
+                    return h('tr', { key: row.month },
                       h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600 } }, row.month),
                       h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600 } }, formatCurrency(row.sales)),
                       h('td', { style: { fontFamily: 'var(--font-mono)', color: '#64748b' } }, formatCurrency(row.expenses)),
+                      h('td', null,
+                        h('span', {
+                          className: `badge ${rowNet >= 0 ? 'badge-success' : 'badge-danger'}`,
+                          style: { fontFamily: 'var(--font-mono)', fontSize: 11 }
+                        }, `${rowPct}%`)
+                      ),
                       h('td', {
                         style: {
                           textAlign: 'right',
                           fontFamily: 'var(--font-mono)',
                           fontWeight: 700,
-                          color: row.net >= 0 ? '#059669' : '#dc2626'
+                          color: rowNet >= 0 ? '#059669' : '#dc2626'
                         }
-                      }, formatCurrency(row.net))
-                    )
-                  )
+                      }, formatCurrency(rowNet))
+                    );
+                  })
                 )
               )
             )
@@ -2569,39 +2944,136 @@ function App() {
     ),
 
     modalType === 'sale' && h('div', { className: 'modal-overlay' },
-      h('div', { className: 'modal-card' },
+      h('div', { className: 'modal-card', style: { maxWidth: 540 } },
         h('div', { className: 'modal-header' },
-          h('h3', null, 'New Sales Invoice'),
+          h('h3', null, formData.id ? 'Edit Sales Invoice' : 'New Sales Invoice'),
           h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
         ),
         h('form', { onSubmit: handleCreateSale },
           h('div', { className: 'modal-body' },
+            // Quick Product Selector from Finished Goods
+            h('div', { className: 'form-group' },
+              h('label', null, 'Product / Finished Good (Optional quick-fill)'),
+              h('select', {
+                className: 'form-select',
+                onChange: e => {
+                  const sel = finishedGoods.find(g => String(g.id) === e.target.value);
+                  if (sel) {
+                    const qty = Number(formData.quantity) || 1;
+                    const unitPrice = Number(sel.unit_price) || Number(sel.unit_cost) * 1.3 || 1000;
+                    setFormData({
+                      ...formData,
+                      product_name: sel.item_name || sel.name,
+                      unit_price: unitPrice,
+                      amount: (unitPrice * qty).toFixed(2),
+                      invoice_no: formData.invoice_no || `INV-${Date.now().toString().slice(-4)}`
+                    });
+                  }
+                }
+              },
+                h('option', { value: '' }, '-- Select existing finished good --'),
+                finishedGoods.map(g => h('option', { key: g.id, value: g.id }, `${g.item_name || g.name} (₹${g.unit_price || g.unit_cost || 0})`))
+              )
+            ),
             h('div', { className: 'form-group' },
               h('label', null, 'Customer Name'),
-              h('input', { className: 'form-input', placeholder: 'e.g. Northstar Retail', required: true, onChange: e => setFormData({ ...formData, customer: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                placeholder: 'e.g. Apex Industrial Corp',
+                required: true,
+                value: formData.customer || '',
+                onChange: e => setFormData({ ...formData, customer: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Invoice Number'),
-              h('input', { className: 'form-input', placeholder: 'e.g. INV-1049', onChange: e => setFormData({ ...formData, invoice_no: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                placeholder: 'e.g. INV-1049',
+                value: formData.invoice_no || '',
+                onChange: e => setFormData({ ...formData, invoice_no: e.target.value })
+              })
             ),
             h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
               h('div', { className: 'form-group' },
-                h('label', null, 'Issued Date'),
-                h('input', { className: 'form-input', type: 'date', defaultValue: new Date().toISOString().split('T')[0], onChange: e => setFormData({ ...formData, issued_date: e.target.value }) })
+                h('label', null, 'Quantity (Units)'),
+                h('input', {
+                  className: 'form-input',
+                  type: 'number',
+                  min: '1',
+                  placeholder: '1',
+                  value: formData.quantity || '1',
+                  onChange: e => {
+                    const q = Number(e.target.value) || 1;
+                    const up = Number(formData.unit_price) || 0;
+                    setFormData({
+                      ...formData,
+                      quantity: q,
+                      amount: up > 0 ? (up * q).toFixed(2) : formData.amount
+                    });
+                  }
+                })
               ),
               h('div', { className: 'form-group' },
-                h('label', null, 'Due Date'),
-                h('input', { className: 'form-input', type: 'date', onChange: e => setFormData({ ...formData, due_date: e.target.value }) })
+                h('label', null, 'Unit Rate (₹)'),
+                h('input', {
+                  className: 'form-input',
+                  type: 'number',
+                  step: '0.01',
+                  placeholder: '0.00',
+                  value: formData.unit_price || '',
+                  onChange: e => {
+                    const up = Number(e.target.value) || 0;
+                    const q = Number(formData.quantity) || 1;
+                    setFormData({
+                      ...formData,
+                      unit_price: up,
+                      amount: (up * q).toFixed(2)
+                    });
+                  }
+                })
               )
             ),
             h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
               h('div', { className: 'form-group' },
-                h('label', null, 'Total Amount (₹)'),
-                h('input', { className: 'form-input', type: 'number', step: '0.01', placeholder: '0.00', required: true, onChange: e => setFormData({ ...formData, amount: e.target.value }) })
+                h('label', null, 'Issued Date'),
+                h('input', {
+                  className: 'form-input',
+                  type: 'date',
+                  value: formData.issued_date || new Date().toISOString().split('T')[0],
+                  onChange: e => setFormData({ ...formData, issued_date: e.target.value })
+                })
+              ),
+              h('div', { className: 'form-group' },
+                h('label', null, 'Due Date'),
+                h('input', {
+                  className: 'form-input',
+                  type: 'date',
+                  value: formData.due_date || '',
+                  onChange: e => setFormData({ ...formData, due_date: e.target.value })
+                })
+              )
+            ),
+            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+              h('div', { className: 'form-group' },
+                h('label', null, 'Total Invoice Amount (₹)'),
+                h('input', {
+                  className: 'form-input',
+                  type: 'number',
+                  step: '0.01',
+                  placeholder: '0.00',
+                  required: true,
+                  value: formData.amount || '',
+                  onChange: e => setFormData({ ...formData, amount: e.target.value })
+                })
               ),
               h('div', { className: 'form-group' },
                 h('label', null, 'Payment Status'),
-                h('select', { className: 'form-select', onChange: e => setFormData({ ...formData, status: e.target.value }) },
+                h('select', {
+                  className: 'form-select',
+                  value: formData.status || 'Pending',
+                  onChange: e => setFormData({ ...formData, status: e.target.value })
+                },
                   h('option', { value: 'Paid' }, 'Paid'),
                   h('option', { value: 'Pending' }, 'Pending'),
                   h('option', { value: 'Overdue' }, 'Overdue')
@@ -2611,7 +3083,7 @@ function App() {
           ),
           h('div', { className: 'modal-footer' },
             h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Cancel'),
-            h('button', { type: 'submit', className: 'btn btn-primary' }, 'Save Invoice')
+            h('button', { type: 'submit', className: 'btn btn-primary' }, formData.id ? 'Update Invoice' : 'Save Invoice')
           )
         )
       )
@@ -2620,18 +3092,28 @@ function App() {
     modalType === 'expense' && h('div', { className: 'modal-overlay' },
       h('div', { className: 'modal-card' },
         h('div', { className: 'modal-header' },
-          h('h3', null, 'Record Business Expense'),
+          h('h3', null, formData.id ? 'Edit Business Expense' : 'Record Business Expense'),
           h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
         ),
         h('form', { onSubmit: handleCreateExpense },
           h('div', { className: 'modal-body' },
             h('div', { className: 'form-group' },
               h('label', null, 'Expense Description'),
-              h('input', { className: 'form-input', placeholder: 'e.g. Factory electricity bill', required: true, onChange: e => setFormData({ ...formData, description: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                placeholder: 'e.g. Factory electricity bill',
+                required: true,
+                value: formData.description || '',
+                onChange: e => setFormData({ ...formData, description: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Category'),
-              h('select', { className: 'form-select', onChange: e => setFormData({ ...formData, category: e.target.value }) },
+              h('select', {
+                className: 'form-select',
+                value: formData.category || 'Utilities',
+                onChange: e => setFormData({ ...formData, category: e.target.value })
+              },
                 h('option', { value: 'Utilities' }, 'Utilities'),
                 h('option', { value: 'Materials' }, 'Materials'),
                 h('option', { value: 'Maintenance' }, 'Maintenance'),
@@ -2641,11 +3123,23 @@ function App() {
             h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
               h('div', { className: 'form-group' },
                 h('label', null, 'Amount (₹)'),
-                h('input', { className: 'form-input', type: 'number', step: '0.01', placeholder: '0.00', required: true, onChange: e => setFormData({ ...formData, amount: e.target.value }) })
+                h('input', {
+                  className: 'form-input',
+                  type: 'number',
+                  step: '0.01',
+                  placeholder: '0.00',
+                  required: true,
+                  value: formData.amount || '',
+                  onChange: e => setFormData({ ...formData, amount: e.target.value })
+                })
               ),
               h('div', { className: 'form-group' },
                 h('label', null, 'Payment Method'),
-                h('select', { className: 'form-select', onChange: e => setFormData({ ...formData, payment_method: e.target.value }) },
+                h('select', {
+                  className: 'form-select',
+                  value: formData.payment_method || 'Bank transfer',
+                  onChange: e => setFormData({ ...formData, payment_method: e.target.value })
+                },
                   h('option', { value: 'Bank transfer' }, 'Bank transfer'),
                   h('option', { value: 'UPI' }, 'UPI'),
                   h('option', { value: 'Cash' }, 'Cash'),
@@ -2655,12 +3149,17 @@ function App() {
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Expense Date'),
-              h('input', { className: 'form-input', type: 'date', defaultValue: new Date().toISOString().split('T')[0], onChange: e => setFormData({ ...formData, expense_date: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                type: 'date',
+                value: formData.expense_date || new Date().toISOString().split('T')[0],
+                onChange: e => setFormData({ ...formData, expense_date: e.target.value })
+              })
             )
           ),
           h('div', { className: 'modal-footer' },
             h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Cancel'),
-            h('button', { type: 'submit', className: 'btn btn-primary' }, 'Save Expense')
+            h('button', { type: 'submit', className: 'btn btn-primary' }, formData.id ? 'Update Expense' : 'Save Expense')
           )
         )
       )
@@ -2676,19 +3175,42 @@ function App() {
           h('div', { className: 'modal-body' },
             h('div', { className: 'form-group' },
               h('label', null, 'Target Product'),
-              h('input', { className: 'form-input', placeholder: 'e.g. Assembly bracket', required: true, onChange: e => setFormData({ ...formData, product: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                placeholder: 'e.g. Precision Assembly bracket',
+                required: true,
+                value: formData.product || '',
+                onChange: e => setFormData({ ...formData, product: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
-              h('label', null, 'Planned Output Quantity'),
-              h('input', { className: 'form-input', type: 'number', step: '0.01', placeholder: '0.00', required: true, onChange: e => setFormData({ ...formData, quantity: e.target.value }) })
+              h('label', null, 'Planned Output Quantity (Units)'),
+              h('input', {
+                className: 'form-input',
+                type: 'number',
+                step: '1',
+                placeholder: '100',
+                required: true,
+                value: formData.quantity || '',
+                onChange: e => setFormData({ ...formData, quantity: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Run Date'),
-              h('input', { className: 'form-input', type: 'date', defaultValue: new Date().toISOString().split('T')[0], onChange: e => setFormData({ ...formData, run_date: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                type: 'date',
+                value: formData.run_date || new Date().toISOString().split('T')[0],
+                onChange: e => setFormData({ ...formData, run_date: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Status'),
-              h('select', { className: 'form-select', onChange: e => setFormData({ ...formData, status: e.target.value }) },
+              h('select', {
+                className: 'form-select',
+                value: formData.status || 'Planned',
+                onChange: e => setFormData({ ...formData, status: e.target.value })
+              },
                 h('option', { value: 'Planned' }, 'Planned'),
                 h('option', { value: 'In progress' }, 'In progress'),
                 h('option', { value: 'Completed' }, 'Completed')
@@ -2706,26 +3228,50 @@ function App() {
     modalType === 'employee' && h('div', { className: 'modal-overlay' },
       h('div', { className: 'modal-card' },
         h('div', { className: 'modal-header' },
-          h('h3', null, 'Add Employee'),
+          h('h3', null, formData.id ? 'Edit Employee Details' : 'Add Employee'),
           h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
         ),
         h('form', { onSubmit: handleCreateEmployee },
           h('div', { className: 'modal-body' },
             h('div', { className: 'form-group' },
               h('label', null, 'Employee Name'),
-              h('input', { className: 'form-input', placeholder: 'e.g. Suresh K', required: true, onChange: e => setFormData({ ...formData, name: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                placeholder: 'e.g. Suresh K',
+                required: true,
+                value: formData.name || '',
+                onChange: e => setFormData({ ...formData, name: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Role / Position'),
-              h('input', { className: 'form-input', placeholder: 'e.g. Production Operator', required: true, onChange: e => setFormData({ ...formData, role: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                placeholder: 'e.g. Production Operator',
+                required: true,
+                value: formData.role || '',
+                onChange: e => setFormData({ ...formData, role: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Monthly Salary (₹)'),
-              h('input', { className: 'form-input', type: 'number', step: '0.01', placeholder: '0.00', required: true, onChange: e => setFormData({ ...formData, monthly_salary: e.target.value }) })
+              h('input', {
+                className: 'form-input',
+                type: 'number',
+                step: '0.01',
+                placeholder: '0.00',
+                required: true,
+                value: formData.monthly_salary || '',
+                onChange: e => setFormData({ ...formData, monthly_salary: e.target.value })
+              })
             ),
             h('div', { className: 'form-group' },
               h('label', null, 'Status'),
-              h('select', { className: 'form-select', onChange: e => setFormData({ ...formData, status: e.target.value }) },
+              h('select', {
+                className: 'form-select',
+                value: formData.status || 'Active',
+                onChange: e => setFormData({ ...formData, status: e.target.value })
+              },
                 h('option', { value: 'Active' }, 'Active'),
                 h('option', { value: 'Inactive' }, 'Inactive')
               )
@@ -2733,8 +3279,378 @@ function App() {
           ),
           h('div', { className: 'modal-footer' },
             h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Cancel'),
-            h('button', { type: 'submit', className: 'btn btn-primary' }, 'Save Employee')
+            h('button', { type: 'submit', className: 'btn btn-primary' }, formData.id ? 'Update Employee' : 'Save Employee')
           )
+        )
+      )
+    ),
+
+    // ================= MODAL: TAX INVOICE PREVIEW & PRINT (Fig. B) =================
+    modalType === 'invoicePreview' && selectedInvoice && h('div', {
+      className: 'modal-overlay',
+      onClick: (e) => { if (e.target === e.currentTarget) setModalType(null); }
+    },
+      h('div', { className: 'modal-card', style: { maxWidth: 840, width: '100%', maxHeight: '92vh', overflowY: 'auto', padding: 0 } },
+        // Header for screen viewing
+        h('div', { className: 'modal-header no-print', style: { padding: '16px 24px', borderBottom: '1px solid var(--border-light)' } },
+          h('div', null,
+            h('h3', { style: { margin: 0, fontSize: 16 } }, `Tax Invoice: ${selectedInvoice.invoice_no || ('INV-' + selectedInvoice.id)}`),
+            h('div', { style: { fontSize: 12, color: '#64748b' } }, 'Printable GST compliant tax invoice')
+          ),
+          h('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+            h('button', {
+              className: 'btn btn-primary',
+              style: { padding: '6px 14px', fontSize: 13 },
+              onClick: () => window.print()
+            }, h(Icon, { name: 'download', size: 14 }), 'Print / Save PDF'),
+            h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
+          )
+        ),
+        // Printable Invoice Document Body
+        h('div', { className: 'printable-invoice', style: { padding: '36px 40px', background: '#fff', color: '#0f172a', fontFamily: 'system-ui, -apple-system, sans-serif' } },
+          // Company Letterhead & Document Title
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0f172a', paddingBottom: 20, marginBottom: 24 } },
+            h('div', { style: { display: 'flex', gap: 14, alignItems: 'center' } },
+              h('img', {
+                src: '/logo.png',
+                alt: 'ForgeLedger Logo',
+                style: { width: 48, height: 48, borderRadius: 10, objectFit: 'contain' }
+              }),
+              h('div', null,
+                h('h2', { style: { margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' } }, companySettings?.name || currentUser?.company_name || 'ForgeLedger Industrial Corp'),
+                h('div', { style: { fontSize: 12, color: '#475569', marginTop: 2 } }, companySettings?.legal_name || 'Manufacturing & Industrial Solutions'),
+                h('div', { style: { fontSize: 11, color: '#64748b', marginTop: 2 } }, companySettings?.address || 'Plot 42, Peenya Industrial Area, Phase II, Bengaluru, Karnataka - 560058'),
+                h('div', { style: { fontSize: 11, color: '#64748b' } }, `GSTIN: ${companySettings?.gst_no || '29AABCF1234F1Z5'} | CIN/REG: ${companySettings?.registration_no || 'U28112KA2022PTC158921'}`)
+              )
+            ),
+            h('div', { style: { textAlign: 'right' } },
+              h('div', { style: { display: 'inline-block', background: '#0f172a', color: '#fff', padding: '4px 12px', borderRadius: 4, fontWeight: 800, fontSize: 13, letterSpacing: '0.8px', textTransform: 'uppercase' } }, 'TAX INVOICE'),
+              h('div', { style: { fontSize: 14, fontWeight: 700, marginTop: 8, fontFamily: 'monospace' } }, selectedInvoice.invoice_no || `INV-${selectedInvoice.id}`),
+              h('div', { style: { fontSize: 11.5, color: '#64748b', marginTop: 2 } }, `Date: ${formatDate(selectedInvoice.issued_date || new Date().toISOString().split('T')[0])}`),
+              selectedInvoice.due_date && h('div', { style: { fontSize: 11.5, color: '#64748b' } }, `Due: ${formatDate(selectedInvoice.due_date)}`),
+              h('div', { style: { marginTop: 6 } },
+                h('span', {
+                  style: {
+                    display: 'inline-block',
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    background: selectedInvoice.status === 'Paid' ? '#dcfce7' : selectedInvoice.status === 'Overdue' ? '#fee2e2' : '#fef3c7',
+                    color: selectedInvoice.status === 'Paid' ? '#15803d' : selectedInvoice.status === 'Overdue' ? '#b91c1c' : '#b45309'
+                  }
+                }, selectedInvoice.status || 'Pending')
+              )
+            )
+          ),
+
+          // Bill To & Supply Details Grid
+          h('div', { style: { display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24, padding: '16px', background: '#f8fafc', borderRadius: 8, marginBottom: 24, border: '1px solid #e2e8f0' } },
+            h('div', null,
+              h('div', { style: { fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 } }, 'BILLED TO (BUYER)'),
+              h('div', { style: { fontSize: 15, fontWeight: 700, color: '#0f172a' } }, selectedInvoice.customer || 'Customer Client'),
+              h('div', { style: { fontSize: 12, color: '#475569', marginTop: 2 } }, 'Industrial Supplies & Operations Division'),
+              h('div', { style: { fontSize: 11.5, color: '#64748b', marginTop: 2 } }, 'GSTIN / UIN: 29AAACH7409R1ZZ'),
+              h('div', { style: { fontSize: 11.5, color: '#64748b' } }, 'State: Karnataka (29)')
+            ),
+            h('div', { style: { borderLeft: '1px solid #e2e8f0', paddingLeft: 18 } },
+              h('div', { style: { fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 } }, 'DISPATCH & PAYMENT TERMS'),
+              h('div', { style: { fontSize: 12, color: '#334155' } }, 'Payment Mode: Bank Wire / NEFT / RTGS'),
+              h('div', { style: { fontSize: 12, color: '#334155', marginTop: 2 } }, 'Place of Supply: Karnataka (29)'),
+              h('div', { style: { fontSize: 12, color: '#334155', marginTop: 2 } }, 'Reverse Charge: No'),
+              h('div', { style: { fontSize: 12, color: '#334155', marginTop: 2 } }, 'Delivery Term: Ex-Works Factory')
+            )
+          ),
+
+          // Table of Tax Invoice Line Items
+          (() => {
+            const totalAmt = Number(selectedInvoice.amount) || 0;
+            const taxable = Math.round((totalAmt / 1.18) * 100) / 100;
+            const totalGst = totalAmt - taxable;
+            const cgst = Math.round((totalGst / 2) * 100) / 100;
+            const sgst = Math.round((totalGst - cgst) * 100) / 100;
+
+            return h('div', null,
+              h('table', { style: { width: '100%', borderCollapse: 'collapse', marginBottom: 20, fontSize: 12 } },
+                h('thead', null,
+                  h('tr', { style: { background: '#0f172a', color: '#fff', textAlign: 'left' } },
+                    h('th', { style: { padding: '8px 10px', borderRadius: '4px 0 0 0' } }, '#'),
+                    h('th', { style: { padding: '8px 10px' } }, 'DESCRIPTION OF GOODS / SERVICES'),
+                    h('th', { style: { padding: '8px 10px', textAlign: 'center' } }, 'HSN/SAC'),
+                    h('th', { style: { padding: '8px 10px', textAlign: 'right' } }, 'QTY'),
+                    h('th', { style: { padding: '8px 10px', textAlign: 'right' } }, 'RATE (₹)'),
+                    h('th', { style: { padding: '8px 10px', textAlign: 'right' } }, 'TAXABLE (₹)'),
+                    h('th', { style: { padding: '8px 10px', textAlign: 'right', borderRadius: '0 4px 0 0' } }, 'TOTAL (₹)')
+                  )
+                ),
+                h('tbody', null,
+                  h('tr', { style: { borderBottom: '1px solid #e2e8f0' } },
+                    h('td', { style: { padding: '12px 10px', color: '#64748b' } }, '1'),
+                    h('td', { style: { padding: '12px 10px', fontWeight: 600, color: '#0f172a' } },
+                      selectedInvoice.product_name || 'Industrial Fabricated Output - Batch Delivery',
+                      h('div', { style: { fontSize: 11, color: '#64748b', fontWeight: 400, marginTop: 2 } }, 'Precision machined engineering components per specification')
+                    ),
+                    h('td', { style: { padding: '12px 10px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' } }, '848340'),
+                    h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace' } }, `${selectedInvoice.quantity || 1} units`),
+                    h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(taxable / (selectedInvoice.quantity || 1))),
+                    h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 } }, formatCurrency(taxable)),
+                    h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 } }, formatCurrency(totalAmt))
+                  )
+                )
+              ),
+
+              // Invoice Totals & Tax Calculation Breakdown
+              h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 14 } },
+                // Left: Bank details & Amount in words
+                h('div', { style: { width: '52%' } },
+                  h('div', { style: { padding: '12px 14px', background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 11.5 } },
+                    h('div', { style: { fontWeight: 700, color: '#334155', marginBottom: 4 } }, 'BANK ACCOUNT DETAILS FOR REMITTANCE:'),
+                    h('div', null, 'Bank Name: HDFC Bank Ltd'),
+                    h('div', null, `A/C Name: ${companySettings?.legal_name || companySettings?.name || 'ForgeLedger Industrial Corp'}`),
+                    h('div', null, 'A/C No: 50200084920194'),
+                    h('div', null, 'IFSC Code: HDFC0001048 (Industrial Branch)')
+                  ),
+                  h('div', { style: { fontSize: 11, color: '#64748b', marginTop: 10, lineHeight: 1.4 } },
+                    'Terms: Payment is due within standard credit terms. Interest @ 18% p.a. will be charged on overdue payments. Goods once sold are not returnable.'
+                  )
+                ),
+                // Right: Tax Breakdown Summary Table
+                h('div', { style: { width: '44%' } },
+                  h('table', { style: { width: '100%', fontSize: 12, borderCollapse: 'collapse' } },
+                    h('tbody', null,
+                      h('tr', { style: { borderBottom: '1px solid #e2e8f0' } },
+                        h('td', { style: { padding: '6px 0', color: '#64748b' } }, 'Taxable Value'),
+                        h('td', { style: { padding: '6px 0', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 } }, formatCurrency(taxable))
+                      ),
+                      h('tr', { style: { borderBottom: '1px solid #e2e8f0' } },
+                        h('td', { style: { padding: '6px 0', color: '#64748b' } }, 'Central GST (CGST 9.0%)'),
+                        h('td', { style: { padding: '6px 0', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(cgst))
+                      ),
+                      h('tr', { style: { borderBottom: '1px solid #e2e8f0' } },
+                        h('td', { style: { padding: '6px 0', color: '#64748b' } }, 'State GST (SGST 9.0%)'),
+                        h('td', { style: { padding: '6px 0', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(sgst))
+                      ),
+                      h('tr', { style: { borderTop: '2px solid #0f172a' } },
+                        h('td', { style: { padding: '10px 0', fontWeight: 800, fontSize: 14 } }, 'Total Invoice Value'),
+                        h('td', { style: { padding: '10px 0', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#0f172a' } }, formatCurrency(totalAmt))
+                      )
+                    )
+                  )
+                )
+              ),
+
+              // Authorized Signatory
+              h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 36, paddingTop: 18, borderTop: '1px solid #cbd5e1' } },
+                h('div', { style: { fontSize: 11, color: '#94a3b8' } },
+                  'This is a computer generated invoice authenticated by ForgeLedger Cloud ERP.'
+                ),
+                h('div', { style: { textAlign: 'center', width: 200 } },
+                  h('div', { style: { height: 40, borderBottom: '1px dashed #64748b', marginBottom: 6 } }),
+                  h('div', { style: { fontSize: 11.5, fontWeight: 700, color: '#0f172a' } }, `For ${companySettings?.name || 'ForgeLedger'}`),
+                  h('div', { style: { fontSize: 10.5, color: '#64748b' } }, 'Authorized Signatory')
+                )
+              )
+            );
+          })()
+        ),
+        // Footer actions for screen viewing
+        h('div', { className: 'modal-footer no-print', style: { padding: '14px 24px', borderTop: '1px solid var(--border-light)' } },
+          selectedInvoice.status !== 'Paid' && h('button', {
+            className: 'btn btn-outline',
+            style: { marginRight: 'auto', borderColor: '#10b981', color: '#059669' },
+            onClick: () => {
+              fetch(`/api/sales/${selectedInvoice.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Paid' })
+              }).then(() => {
+                if (window.__showToast) window.__showToast(`Invoice ${selectedInvoice.invoice_no} marked as Paid!`, 'success');
+                setSelectedInvoice({ ...selectedInvoice, status: 'Paid' });
+                loadAllData();
+              });
+            }
+          }, '✓ Mark as Paid'),
+          h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Close'),
+          h('button', {
+            type: 'button',
+            className: 'btn btn-primary',
+            onClick: () => window.print()
+          }, h(Icon, { name: 'download', size: 14 }), 'Print / Save PDF')
+        )
+      )
+    ),
+
+    // ================= MODAL: SALARY PAYSLIP PREVIEW & PRINT =================
+    modalType === 'payslipPreview' && selectedEmployee && h('div', {
+      className: 'modal-overlay',
+      onClick: (e) => { if (e.target === e.currentTarget) setModalType(null); }
+    },
+      h('div', { className: 'modal-card', style: { maxWidth: 760, width: '100%', maxHeight: '92vh', overflowY: 'auto', padding: 0 } },
+        // Header for screen viewing
+        h('div', { className: 'modal-header no-print', style: { padding: '16px 24px', borderBottom: '1px solid var(--border-light)' } },
+          h('div', null,
+            h('h3', { style: { margin: 0, fontSize: 16 } }, `Salary Payslip: ${selectedEmployee.name}`),
+            h('div', { style: { fontSize: 12, color: '#64748b' } }, 'Employee Monthly Compensation Voucher')
+          ),
+          h('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+            h('button', {
+              className: 'btn btn-primary',
+              style: { padding: '6px 14px', fontSize: 13 },
+              onClick: () => window.print()
+            }, h(Icon, { name: 'download', size: 14 }), 'Print Payslip'),
+            h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
+          )
+        ),
+        // Printable Payslip Body
+        h('div', { className: 'printable-invoice', style: { padding: '36px 40px', background: '#fff', color: '#0f172a', fontFamily: 'system-ui, -apple-system, sans-serif' } },
+          // Company Header
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: 16, marginBottom: 20 } },
+            h('div', { style: { display: 'flex', gap: 12, alignItems: 'center' } },
+              h('img', {
+                src: '/logo.png',
+                alt: 'ForgeLedger Logo',
+                style: { width: 44, height: 44, borderRadius: 8, objectFit: 'contain' }
+              }),
+              h('div', null,
+                h('h2', { style: { margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' } }, companySettings?.name || currentUser?.company_name || 'ForgeLedger Industrial Corp'),
+                h('div', { style: { fontSize: 11.5, color: '#64748b' } }, companySettings?.address || 'Peenya Industrial Area, Phase II, Bengaluru, Karnataka')
+              )
+            ),
+            h('div', { style: { textAlign: 'right' } },
+              h('div', { style: { display: 'inline-block', background: '#2563eb', color: '#fff', padding: '3px 10px', borderRadius: 4, fontWeight: 700, fontSize: 12, textTransform: 'uppercase' } }, 'SALARY PAYSLIP'),
+              h('div', { style: { fontSize: 12.5, fontWeight: 600, marginTop: 4 } }, new Date().toLocaleString('default', { month: 'long', year: 'numeric' }))
+            )
+          ),
+
+          // Employee Details Grid
+          h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '14px 16px', background: '#f8fafc', borderRadius: 6, marginBottom: 20, border: '1px solid #e2e8f0', fontSize: 12 } },
+            h('div', null,
+              h('div', { style: { display: 'flex', marginBottom: 4 } },
+                h('span', { style: { color: '#64748b', width: 110 } }, 'Employee Name:'),
+                h('span', { style: { fontWeight: 700, color: '#0f172a' } }, selectedEmployee.name)
+              ),
+              h('div', { style: { display: 'flex', marginBottom: 4 } },
+                h('span', { style: { color: '#64748b', width: 110 } }, 'Employee ID:'),
+                h('span', { style: { fontFamily: 'monospace', fontWeight: 600 } }, `EMP-${String(selectedEmployee.id).padStart(4, '0')}`)
+              ),
+              h('div', { style: { display: 'flex' } },
+                h('span', { style: { color: '#64748b', width: 110 } }, 'Designation/Role:'),
+                h('span', { style: { fontWeight: 600 } }, selectedEmployee.role)
+              )
+            ),
+            h('div', null,
+              h('div', { style: { display: 'flex', marginBottom: 4 } },
+                h('span', { style: { color: '#64748b', width: 110 } }, 'Payment Mode:'),
+                h('span', { style: { fontWeight: 600 } }, 'Bank Transfer (NEFT)')
+              ),
+              h('div', { style: { display: 'flex', marginBottom: 4 } },
+                h('span', { style: { color: '#64748b', width: 110 } }, 'Status:'),
+                h('span', { style: { color: selectedEmployee.status === 'Active' ? '#059669' : '#d97706', fontWeight: 700 } }, selectedEmployee.status)
+              ),
+              h('div', { style: { display: 'flex' } },
+                h('span', { style: { color: '#64748b', width: 110 } }, 'Pay Days:'),
+                h('span', { style: { fontFamily: 'monospace' } }, '30 Days')
+              )
+            )
+          ),
+
+          // Compensation Breakdown Table (Earnings vs Deductions)
+          (() => {
+            const grossSalary = Number(selectedEmployee.monthly_salary) || 28000;
+            const basic = Math.round(grossSalary * 0.50);
+            const hra = Math.round(grossSalary * 0.30);
+            const special = grossSalary - basic - hra;
+
+            const pf = Math.round(Math.min(1800, grossSalary * 0.06));
+            const pt = 200;
+            const totalDeductions = pf + pt;
+            const netTakeHome = grossSalary - totalDeductions;
+
+            return h('div', null,
+              h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 } },
+                // Earnings column
+                h('div', { style: { border: '1px solid #e2e8f0', borderRadius: 6, overflow: 'hidden' } },
+                  h('div', { style: { background: '#f1f5f9', padding: '8px 12px', fontWeight: 700, fontSize: 12, borderBottom: '1px solid #e2e8f0', color: '#0f172a' } }, 'EARNINGS'),
+                  h('table', { style: { width: '100%', fontSize: 12, borderCollapse: 'collapse' } },
+                    h('tbody', null,
+                      h('tr', { style: { borderBottom: '1px solid #f1f5f9' } },
+                        h('td', { style: { padding: '8px 12px', color: '#475569' } }, 'Basic Salary (50%)'),
+                        h('td', { style: { padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(basic))
+                      ),
+                      h('tr', { style: { borderBottom: '1px solid #f1f5f9' } },
+                        h('td', { style: { padding: '8px 12px', color: '#475569' } }, 'House Rent Allowance (HRA)'),
+                        h('td', { style: { padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(hra))
+                      ),
+                      h('tr', { style: { borderBottom: '1px solid #f1f5f9' } },
+                        h('td', { style: { padding: '8px 12px', color: '#475569' } }, 'Special / Factory Allowance'),
+                        h('td', { style: { padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(special))
+                      ),
+                      h('tr', { style: { background: '#f8fafc', fontWeight: 700 } },
+                        h('td', { style: { padding: '10px 12px', color: '#0f172a' } }, 'Gross Earnings'),
+                        h('td', { style: { padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#0f172a' } }, formatCurrency(grossSalary))
+                      )
+                    )
+                  )
+                ),
+                // Deductions column
+                h('div', { style: { border: '1px solid #e2e8f0', borderRadius: 6, overflow: 'hidden' } },
+                  h('div', { style: { background: '#f1f5f9', padding: '8px 12px', fontWeight: 700, fontSize: 12, borderBottom: '1px solid #e2e8f0', color: '#0f172a' } }, 'DEDUCTIONS'),
+                  h('table', { style: { width: '100%', fontSize: 12, borderCollapse: 'collapse' } },
+                    h('tbody', null,
+                      h('tr', { style: { borderBottom: '1px solid #f1f5f9' } },
+                        h('td', { style: { padding: '8px 12px', color: '#475569' } }, 'Provident Fund (PF)'),
+                        h('td', { style: { padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(pf))
+                      ),
+                      h('tr', { style: { borderBottom: '1px solid #f1f5f9' } },
+                        h('td', { style: { padding: '8px 12px', color: '#475569' } }, 'Professional Tax (PT)'),
+                        h('td', { style: { padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(pt))
+                      ),
+                      h('tr', { style: { borderBottom: '1px solid #f1f5f9' } },
+                        h('td', { style: { padding: '8px 12px', color: '#94a3b8' } }, 'TDS / Other Deductions'),
+                        h('td', { style: { padding: '8px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#94a3b8' } }, '₹0')
+                      ),
+                      h('tr', { style: { background: '#f8fafc', fontWeight: 700 } },
+                        h('td', { style: { padding: '10px 12px', color: '#dc2626' } }, 'Total Deductions'),
+                        h('td', { style: { padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#dc2626' } }, formatCurrency(totalDeductions))
+                      )
+                    )
+                  )
+                )
+              ),
+
+              // Net Take Home Pay Highlight
+              h('div', { style: { padding: '14px 20px', background: 'linear-gradient(135deg, #1e293b, #0f172a)', color: '#fff', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 } },
+                h('div', null,
+                  h('div', { style: { fontSize: 11.5, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94a3b8' } }, 'NET TAKE-HOME COMPENSATION'),
+                  h('div', { style: { fontSize: 11, color: '#cbd5e1', marginTop: 2 } }, 'Credited directly to employee registered bank account')
+                ),
+                h('div', { style: { fontSize: 22, fontWeight: 800, fontFamily: 'monospace', color: '#38bdf8' } }, formatCurrency(netTakeHome))
+              ),
+
+              // Signatures
+              h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 32, paddingTop: 18, borderTop: '1px solid #cbd5e1' } },
+                h('div', { style: { textAlign: 'center', width: 180 } },
+                  h('div', { style: { height: 35, borderBottom: '1px dashed #64748b', marginBottom: 4 } }),
+                  h('div', { style: { fontSize: 11, fontWeight: 600, color: '#475569' } }, 'Employee Signature')
+                ),
+                h('div', { style: { textAlign: 'center', width: 200 } },
+                  h('div', { style: { height: 35, borderBottom: '1px dashed #64748b', marginBottom: 4 } }),
+                  h('div', { style: { fontSize: 11.5, fontWeight: 700, color: '#0f172a' } }, `For ${companySettings?.name || 'ForgeLedger'}`),
+                  h('div', { style: { fontSize: 10.5, color: '#64748b' } }, 'Authorized HR Signatory')
+                )
+              )
+            );
+          })()
+        ),
+        // Footer actions
+        h('div', { className: 'modal-footer no-print', style: { padding: '14px 24px', borderTop: '1px solid var(--border-light)' } },
+          h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Close'),
+          h('button', {
+            type: 'button',
+            className: 'btn btn-primary',
+            onClick: () => window.print()
+          }, h(Icon, { name: 'download', size: 14 }), 'Print Payslip')
         )
       )
     ),

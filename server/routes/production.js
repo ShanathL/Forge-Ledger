@@ -42,4 +42,14 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
   }
 });
 
+// DELETE /api/production/:id
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    await db.deleteProductionRun(req.user.id, req.user.company_id, req.params.id);
+    res.json({ success: true, message: 'Production run deleted' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

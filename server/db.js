@@ -968,6 +968,19 @@ class DatabaseManager {
     return this.data.production_runs[idx];
   }
 
+  async deleteProductionRun(userId, companyIdOrRunId, runIdArg) {
+    const compId = runIdArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrRunId) : await this.resolveCompanyId(userId, null);
+    const runId = runIdArg !== undefined ? runIdArg : companyIdOrRunId;
+
+    if (this.useMySQL) {
+      await mysql.query('DELETE FROM production_runs WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)', [Number(runId), Number(userId), Number(compId)]);
+      return true;
+    }
+    this.data.production_runs = this.data.production_runs.filter(p => !(p.id === Number(runId) && p.user_id === Number(userId) && (Number(p.company_id) === Number(compId) || !p.company_id)));
+    this.saveJson();
+    return true;
+  }
+
   // --- Dashboard Aggregates ---
   async getDashboardSummary(userId, companyId) {
     const compId = await this.resolveCompanyId(userId, companyId);
