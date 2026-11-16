@@ -43,8 +43,10 @@ async function checkConnection() {
   }
 }
 
-async function initDatabase() {
+async function initDatabase(force = false) {
   try {
+    const dbName = poolConfig.database;
+
     // 1. Create database if it does not exist using a temporary connection without database selected
     const rootConn = await mysql.createConnection({
       host: poolConfig.host,
@@ -53,16 +55,27 @@ async function initDatabase() {
       password: poolConfig.password
     });
 
-    await rootConn.query(`CREATE DATABASE IF NOT EXISTS \`${poolConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+    await rootConn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
     await rootConn.end();
 
-    // 2. Read schema file and execute
+    const p = getPool();
+    await p.query(`USE \`${dbName}\`;`);
+
+    // 2. Check if tables already exist
+    const [existing] = await p.query(
+      `SELECT COUNT(*) AS cnt FROM information_schema.tables WHERE table_schema = ? AND table_name = 'users'`,
+      [dbName]
+    );
+
+    const tablesExist = existing[0] && Number(existing[0].cnt) > 0;
+
     const schemaPath = path.join(__dirname, '..', '..', 'database', 'db.sql');
-    if (fs.existsSync(schemaPath)) {
+    if (fs.existsSync(schemaPath) && (!tablesExist || force)) {
       const sqlContent = fs.readFileSync(schemaPath, 'utf-8');
-      const p = getPool();
       await p.query(sqlContent);
-      console.log(`[MySQL] Database '${poolConfig.database}' initialized successfully.`);
+      console.log(`[MySQL] Database '${dbName}' populated with tables and seed data successfully.`);
+    } else {
+      console.log(`[MySQL] Database '${dbName}' tables verified and ready.`);
     }
 
     isConnected = true;

@@ -46,6 +46,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Database Seed / Verification endpoint
+app.post('/api/health/seed', async (req, res) => {
+  try {
+    const success = await mysql.initDatabase(true);
+    res.json({ success, message: 'Database tables and seeds initialized successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Mount protected and public API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);

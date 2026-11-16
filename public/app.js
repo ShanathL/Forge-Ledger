@@ -73,6 +73,46 @@ function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: 'demo@forgeledger.local', password: 'password123', companyName: 'Riverton Works' });
   const [authError, setAuthError] = useState('');
 
+  // Filtered Inventory (Finished products / goods)
+  const filteredInventory = useMemo(() => {
+    const q = (searchQuery || '').toLowerCase().trim();
+    return (inventory || []).filter(item => {
+      if (!item) return false;
+      if (!q) return true;
+      const name = (item.item_name || '').toLowerCase();
+      const sku = (item.sku || '').toLowerCase();
+      return name.includes(q) || sku.includes(q);
+    });
+  }, [inventory, searchQuery]);
+
+  // Filtered Sales
+  const filteredSales = useMemo(() => {
+    const q = (searchQuery || '').toLowerCase().trim();
+    return (sales || []).filter(s => {
+      if (!s) return false;
+      if (!q) return true;
+      const customer = (s.customer || '').toLowerCase();
+      const invoice = (s.invoice_no || '').toLowerCase();
+      return customer.includes(q) || invoice.includes(q);
+    });
+  }, [sales, searchQuery]);
+
+  // Filtered Expenses
+  const filteredExpenses = useMemo(() => {
+    const q = (searchQuery || '').toLowerCase().trim();
+    return (expenses || []).filter(e => {
+      if (!e) return false;
+      if (!q) return true;
+      const desc = (e.description || '').toLowerCase();
+      const cat = (e.category || '').toLowerCase();
+      return desc.includes(q) || cat.includes(q);
+    });
+  }, [expenses, searchQuery]);
+
+  const distinctExpenseCategories = useMemo(() => {
+    return new Set((expenses || []).map(e => e?.category || 'General')).size;
+  }, [expenses]);
+
   // Initial Load: Check session
   useEffect(() => {
     fetch('/api/auth/me')
@@ -274,8 +314,19 @@ function App() {
       });
   }
 
+  // Loading screen while checking session
+  if (loading) {
+    return h('div', { style: { display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0b1329', color: '#fff', fontFamily: 'var(--font-sans)' } },
+      h('div', { style: { textAlign: 'center' } },
+        h('div', { className: 'brand-icon', style: { width: 48, height: 48, margin: '0 auto 16px', fontSize: 24 } }, 'F'),
+        h('div', { style: { fontSize: 22, fontWeight: 800, marginBottom: 8, color: '#3b82f6' } }, 'ForgeLedger'),
+        h('div', { style: { fontSize: 13, color: '#94a3b8' } }, 'Connecting to workspace...')
+      )
+    );
+  }
+
   // Unauthenticated screen
-  if (!currentUser && !loading) {
+  if (!currentUser) {
     return h('div', { className: 'modal-overlay', style: { background: '#0b1329' } },
       h('div', { className: 'modal-card', style: { maxWidth: 410 } },
         h('div', { style: { padding: '28px 24px 18px', textAlign: 'center' } },
@@ -316,31 +367,6 @@ function App() {
       )
     );
   }
-
-  // Filtered Inventory (Finished products / goods)
-  const filteredInventory = useMemo(() => {
-    return inventory.filter(item => {
-      return !searchQuery || item.item_name.toLowerCase().includes(searchQuery.toLowerCase()) || item.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    });
-  }, [inventory, searchQuery]);
-
-  // Filtered Sales
-  const filteredSales = useMemo(() => {
-    return sales.filter(s => {
-      return !searchQuery || s.customer.toLowerCase().includes(searchQuery.toLowerCase()) || s.invoice_no.toLowerCase().includes(searchQuery.toLowerCase());
-    });
-  }, [sales, searchQuery]);
-
-  // Filtered Expenses
-  const filteredExpenses = useMemo(() => {
-    return expenses.filter(e => {
-      return !searchQuery || e.description.toLowerCase().includes(searchQuery.toLowerCase()) || e.category.toLowerCase().includes(searchQuery.toLowerCase());
-    });
-  }, [expenses, searchQuery]);
-
-  const distinctExpenseCategories = useMemo(() => {
-    return new Set(expenses.map(e => e.category)).size;
-  }, [expenses]);
 
   return h('div', { className: 'app-layout' },
     // SIDEBAR
@@ -1460,6 +1486,36 @@ function App() {
   );
 }
 
-// Mount React App
+// Error Boundary to prevent any blank white screen crashes
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('ForgeLedger UI runtime error caught:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return h('div', { style: { display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0b1329', color: '#fff', fontFamily: 'var(--font-sans)', padding: 20 } },
+        h('div', { style: { textAlign: 'center', maxWidth: 440, padding: 30, background: '#1e293b', borderRadius: 12, border: '1px solid #334155', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' } },
+          h('div', { className: 'brand-icon', style: { width: 44, height: 44, margin: '0 auto 16px', background: '#ef4444' } }, '!'),
+          h('div', { style: { fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 8 } }, 'Session Refresh Required'),
+          h('div', { style: { fontSize: 13, color: '#94a3b8', marginBottom: 20, lineHeight: 1.5 } }, this.state.error?.message || 'The application encountered an unexpected state.'),
+          h('button', {
+            style: { padding: '10px 22px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 600, cursor: 'pointer', fontSize: 13 },
+            onClick: () => { window.location.reload(); }
+          }, 'Reload Workspace')
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Mount React App with ErrorBoundary
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(h(App));
+root.render(h(ErrorBoundary, null, h(App)));
