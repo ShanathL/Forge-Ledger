@@ -15,7 +15,7 @@ git add .
 
 echo.
 echo Committing fixes...
-git commit -m "Fix React Hooks early-return white screen crash and MySQL database initialization"
+git commit -m "Add collapsible sidebar with persisted state and smooth transition"
 
 echo.
 echo Pushing to GitHub (origin main)...

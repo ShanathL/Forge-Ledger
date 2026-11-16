@@ -25,7 +25,10 @@ function Icon({ name, size = 17, className = "" }) {
     trash: h('path', { d: 'M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }),
     arrowRight: h('path', { d: 'M5 12h14M12 5l7 7-7 7' }),
     logout: h('path', { d: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9' }),
-    edit: h('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' })
+    edit: h('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' }),
+    chevronLeft: h('path', { d: 'M15 18l-6-6 6-6' }),
+    chevronRight: h('path', { d: 'M9 18l6-6-6-6' }),
+    menu: h('path', { d: 'M3 12h18M3 6h18M3 18h18' })
   };
 
   return h('svg', {
@@ -46,6 +49,17 @@ function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('forgeledger_sidebar_collapsed') === 'true'; } catch (_) { return false; }
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem('forgeledger_sidebar_collapsed', String(next)); } catch (_) {}
+      return next;
+    });
+  };
 
   // Core Data Stores
   const [dashboard, setDashboard] = useState(null);
@@ -368,21 +382,38 @@ function App() {
     );
   }
 
-  return h('div', { className: 'app-layout' },
+  return h('div', { className: `app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}` },
     // SIDEBAR
-    h('aside', { className: 'sidebar' },
+    h('aside', { className: `sidebar ${sidebarCollapsed ? 'collapsed' : ''}` },
       h('div', { className: 'sidebar-brand' },
-        h('div', { className: 'brand-icon' }, 'F'),
-        h('div', { className: 'brand-text' },
+        h('div', {
+          className: 'brand-icon',
+          onClick: () => sidebarCollapsed && setSidebarCollapsed(false),
+          style: { cursor: sidebarCollapsed ? 'pointer' : 'default' },
+          title: sidebarCollapsed ? 'Click to expand sidebar' : ''
+        }, 'F'),
+        !sidebarCollapsed && h('div', { className: 'brand-text' },
           h('h1', null, 'forgeledger'),
           h('span', null, 'BUSINESS WORKSPACE')
+        ),
+        h('button', {
+          className: 'sidebar-toggle-btn',
+          onClick: toggleSidebar,
+          title: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+          'aria-label': sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+        },
+          h(Icon, { name: sidebarCollapsed ? 'chevronRight' : 'chevronLeft', size: 14 })
         )
       ),
 
       // Workspace Pill
-      h('div', { className: 'workspace-selector' },
+      h('div', {
+        className: 'workspace-selector',
+        title: currentUser?.company?.name || 'Riverton Works',
+        onClick: () => { setActiveTab('settings'); }
+      },
         h('div', { className: 'workspace-avatar' }, currentUser?.company?.name?.charAt(0) || 'R'),
-        h('div', { className: 'workspace-info' },
+        !sidebarCollapsed && h('div', { className: 'workspace-info' },
           h('div', { className: 'workspace-name' }, currentUser?.company?.name || 'Riverton Works'),
           h('div', { className: 'workspace-sub' }, 'Current workspace')
         )
@@ -390,7 +421,7 @@ function App() {
 
       // Navigation Items (Exact matching paper)
       h('nav', { className: 'sidebar-nav' },
-        h('div', { className: 'nav-section-title' }, 'WORKSPACE'),
+        !sidebarCollapsed && h('div', { className: 'nav-section-title' }, 'WORKSPACE'),
         [
           { id: 'overview', label: 'Overview', icon: 'overview' },
           { id: 'inventory', label: 'Inventory', icon: 'inventory' },
@@ -405,17 +436,18 @@ function App() {
           h('a', {
             key: item.id,
             className: `nav-item ${activeTab === item.id ? 'active' : ''}`,
+            title: item.label,
             onClick: () => { setActiveTab(item.id); setSearchQuery(''); }
           },
             h(Icon, { name: item.icon }),
-            item.label
+            !sidebarCollapsed && h('span', { className: 'nav-label' }, item.label)
           )
         )
       ),
 
       // Sidebar Footer
       h('div', { className: 'sidebar-footer' },
-        h('div', { className: 'help-box' },
+        !sidebarCollapsed && h('div', { className: 'help-box' },
           h('div', { className: 'help-title' },
             h(Icon, { name: 'overview', size: 13 }),
             'Need a hand?'
@@ -424,9 +456,12 @@ function App() {
         ),
 
         // User Profile Card
-        h('div', { className: 'user-badge' },
+        h('div', {
+          className: 'user-badge',
+          title: `${currentUser?.name || 'Demo User'} (${currentUser?.email || 'demo@forgeledger.local'})`
+        },
           h('div', { className: 'user-avatar' }, currentUser?.name?.charAt(0) || 'D'),
-          h('div', { className: 'user-details' },
+          !sidebarCollapsed && h('div', { className: 'user-details' },
             h('div', { className: 'user-name' }, currentUser?.name || 'Demo User'),
             h('div', { className: 'user-email' }, currentUser?.email || 'demo@forgeledger.local')
           ),
@@ -441,17 +476,27 @@ function App() {
     h('div', { className: 'main-wrapper' },
       // Top Bar (Clean, no duplicate avatar)
       h('header', { className: 'top-header' },
-        h('div', { className: 'breadcrumb' },
-          'Workspace / ',
-          h('span', { className: 'current' },
-            activeTab === 'overview' ? 'Business overview' :
-            activeTab === 'inventory' ? 'Inventory' :
-            activeTab === 'sales' ? 'Sales & invoices' :
-            activeTab === 'expenses' ? 'Expenses' :
-            activeTab === 'rawMaterials' ? 'Raw materials' :
-            activeTab === 'production' ? 'Production' :
-            activeTab === 'payroll' ? 'Payroll' :
-            activeTab === 'reports' ? 'Reports' : 'Settings'
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+          h('button', {
+            className: 'header-toggle-btn',
+            onClick: toggleSidebar,
+            title: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+            'aria-label': 'Toggle navigation sidebar'
+          },
+            h(Icon, { name: 'menu', size: 17 })
+          ),
+          h('div', { className: 'breadcrumb' },
+            'Workspace / ',
+            h('span', { className: 'current' },
+              activeTab === 'overview' ? 'Business overview' :
+              activeTab === 'inventory' ? 'Inventory' :
+              activeTab === 'sales' ? 'Sales & invoices' :
+              activeTab === 'expenses' ? 'Expenses' :
+              activeTab === 'rawMaterials' ? 'Raw materials' :
+              activeTab === 'production' ? 'Production' :
+              activeTab === 'payroll' ? 'Payroll' :
+              activeTab === 'reports' ? 'Reports' : 'Settings'
+            )
           )
         ),
         h('div', { className: 'header-status' },
