@@ -15,7 +15,7 @@ git add .
 
 echo.
 echo Committing fixes...
-git commit -m "Add official ForgeLedger logo and icon, enlarge inventory pie chart, add raw materials valuation pie chart"
+git commit -m "Enhance UI animations, tab fade-slide transitions, button micro-interactions, modal spring pop, and toast notifications"
 
 echo.
 echo Pushing to GitHub (origin main)...

@@ -1,7 +1,7 @@
 // public/app.js - ForgeLedger Complete Refined Application
 // Reference: Lanka Shanath, "Integrated Manufacturing Workspace for Small Manufacturers"
 
-const { useState, useEffect, useMemo, createElement: h } = React;
+const { useState, useEffect, useMemo, useCallback, createElement: h } = React;
 
 function formatCurrency(amount, currency = '₹') {
   const num = Number(amount) || 0;
@@ -68,7 +68,11 @@ function Icon({ name, size = 17, className = "" }) {
 // Client-Side CSV Export Utility
 function exportToCsv(filename, rows, headerMap) {
   if (!rows || !rows.length) {
-    alert('No data available to export.');
+    if (typeof window !== 'undefined' && window.__showToast) {
+      window.__showToast('No data available to export.', 'warning');
+    } else {
+      alert('No data available to export.');
+    }
     return;
   }
   const keys = Object.keys(headerMap);
@@ -92,6 +96,9 @@ function exportToCsv(filename, rows, headerMap) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  if (typeof window !== 'undefined' && window.__showToast) {
+    window.__showToast(`${filename}.csv exported successfully!`, 'success');
+  }
 }
 
 // Enhanced, Highly Visible Inventory Pie / Donut Chart Component (Enlarged)
@@ -628,6 +635,33 @@ function ReportsComparisonChart({ reportsData = null, currency = '₹' }) {
   );
 }
 
+// Interactive Toast Notification Component
+function ToastContainer({ toasts, onDismiss }) {
+  if (!toasts || toasts.length === 0) return null;
+  return h('div', { className: 'toast-container', 'aria-live': 'polite' },
+    toasts.map(toast => {
+      const iconName = toast.type === 'error' ? 'alertCircle' :
+                       toast.type === 'warning' ? 'alertCircle' :
+                       toast.type === 'info' ? 'alertCircle' : 'checkCircle';
+      return h('div', {
+        key: toast.id,
+        className: `toast-item toast-${toast.type || 'info'}`,
+        onClick: () => onDismiss(toast.id)
+      },
+        h('div', { className: 'toast-icon-wrap' },
+          h(Icon, { name: iconName, size: 15 })
+        ),
+        h('div', { className: 'toast-message' }, toast.message),
+        h('button', {
+          className: 'toast-close-btn',
+          onClick: (e) => { e.stopPropagation(); onDismiss(toast.id); },
+          'aria-label': 'Dismiss'
+        }, '✕')
+      );
+    })
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [currentUser, setCurrentUser] = useState(null);
@@ -638,6 +672,29 @@ function App() {
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem('forgeledger_theme') === 'dark'; } catch (_) { return false; }
   });
+
+  // Modern In-App Toast Notifications
+  const [toasts, setToasts] = useState([]);
+
+  const addToast = useCallback((message, type = 'success') => {
+    if (!message) return;
+    const id = Date.now() + Math.random().toString(36).substring(2, 7);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3800);
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  useEffect(() => {
+    window.__showToast = addToast;
+    return () => {
+      delete window.__showToast;
+    };
+  }, [addToast]);
 
   useEffect(() => {
     if (darkMode) {
@@ -817,7 +874,7 @@ function App() {
     });
   }
 
-  // Modal Submissions
+  // Modal Submissions & Actions with Toast Feedback
   function handleCreateItem(e) {
     e.preventDefault();
     fetch('/api/inventory', {
@@ -831,8 +888,12 @@ function App() {
           setModalType(null);
           setFormData({});
           loadAllData();
-        } else alert(res.error);
-      });
+          addToast('Inventory item saved successfully!', 'success');
+        } else {
+          addToast(res.error || 'Failed to save inventory item', 'error');
+        }
+      })
+      .catch(err => addToast(err.message || 'Network error saving item', 'error'));
   }
 
   function handleCreateSale(e) {
@@ -848,8 +909,12 @@ function App() {
           setModalType(null);
           setFormData({});
           loadAllData();
-        } else alert(res.error);
-      });
+          addToast('Sales invoice created successfully!', 'success');
+        } else {
+          addToast(res.error || 'Failed to create sales invoice', 'error');
+        }
+      })
+      .catch(err => addToast(err.message || 'Network error creating invoice', 'error'));
   }
 
   function handleCreateExpense(e) {
@@ -865,8 +930,12 @@ function App() {
           setModalType(null);
           setFormData({});
           loadAllData();
-        } else alert(res.error);
-      });
+          addToast('Expense recorded successfully!', 'success');
+        } else {
+          addToast(res.error || 'Failed to record expense', 'error');
+        }
+      })
+      .catch(err => addToast(err.message || 'Network error recording expense', 'error'));
   }
 
   function handleCreateProduction(e) {
@@ -882,8 +951,12 @@ function App() {
           setModalType(null);
           setFormData({});
           loadAllData();
-        } else alert(res.error);
-      });
+          addToast('Production batch logged successfully!', 'success');
+        } else {
+          addToast(res.error || 'Failed to log production batch', 'error');
+        }
+      })
+      .catch(err => addToast(err.message || 'Network error logging batch', 'error'));
   }
 
   function handleCreateEmployee(e) {
@@ -899,8 +972,12 @@ function App() {
           setModalType(null);
           setFormData({});
           loadAllData();
-        } else alert(res.error);
-      });
+          addToast('Employee profile added successfully!', 'success');
+        } else {
+          addToast(res.error || 'Failed to save employee profile', 'error');
+        }
+      })
+      .catch(err => addToast(err.message || 'Network error saving employee', 'error'));
   }
 
   function handleAddRawMaterial(e) {
@@ -915,8 +992,12 @@ function App() {
         if (res.success) {
           setRawMaterialForm({ name: '', unit: 'kg', quantity: 0, unit_cost: 0 });
           loadAllData();
-        } else alert(res.error);
-      });
+          addToast('Raw material batch added to inventory!', 'success');
+        } else {
+          addToast(res.error || 'Failed to add raw material', 'error');
+        }
+      })
+      .catch(err => addToast(err.message || 'Network error adding raw material', 'error'));
   }
 
   function handleDelete(type, id) {
@@ -924,9 +1005,14 @@ function App() {
     fetch(`/api/${type}/${id}`, { method: 'DELETE' })
       .then(r => r.json())
       .then(res => {
-        if (res.success) loadAllData();
-        else alert(res.error);
-      });
+        if (res.success) {
+          loadAllData();
+          addToast('Record deleted successfully.', 'info');
+        } else {
+          addToast(res.error || 'Failed to delete record', 'error');
+        }
+      })
+      .catch(err => addToast(err.message || 'Network error deleting record', 'error'));
   }
 
   function handleSaveSettings(e) {
@@ -939,10 +1025,13 @@ function App() {
       .then(r => r.json())
       .then(res => {
         if (res.success) {
-          alert('Company settings updated successfully!');
+          addToast('Company settings updated successfully!', 'success');
           loadAllData();
-        } else alert(res.error);
-      });
+        } else {
+          addToast(res.error || 'Failed to update settings', 'error');
+        }
+      })
+      .catch(err => addToast(err.message || 'Network error updating settings', 'error'));
   }
 
   function handleSwitchCompany(companyId) {
@@ -960,13 +1049,16 @@ function App() {
           setShowCompanyModal(false);
           setShowNewCompanyForm(false);
           loadAllData();
+          addToast('Switched company workspace successfully!', 'success');
         } else {
           setCompanyError(res.error || 'Failed to switch company');
+          addToast(res.error || 'Failed to switch company', 'error');
         }
       })
       .catch(err => {
         setCompanyActionLoading(false);
         setCompanyError(err.message);
+        addToast(err.message, 'error');
       });
   }
 
@@ -991,13 +1083,16 @@ function App() {
           setShowNewCompanyForm(false);
           setShowCompanyModal(false);
           loadAllData();
+          addToast('New company registered successfully!', 'success');
         } else {
           setCompanyError(res.error || 'Failed to create company');
+          addToast(res.error || 'Failed to create company', 'error');
         }
       })
       .catch(err => {
         setCompanyActionLoading(false);
         setCompanyError(err.message);
+        addToast(err.message, 'error');
       });
   }
 
@@ -1014,44 +1109,47 @@ function App() {
 
   // Unauthenticated screen
   if (!currentUser) {
-    return h('div', { className: 'modal-overlay', style: { background: '#0b1329' } },
-      h('div', { className: 'modal-card', style: { maxWidth: 410 } },
-        h('div', { style: { padding: '28px 24px 18px', textAlign: 'center' } },
-          h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', style: { width: 54, height: 54, borderRadius: 12, margin: '0 auto 14px', display: 'block', boxShadow: '0 4px 16px rgba(37,99,235,0.35)' } }),
-          h('h2', { style: { fontSize: 21, fontWeight: 800, color: '#0f172a' } }, 'ForgeLedger'),
-          h('p', { style: { fontSize: 13, color: '#64748b', marginTop: 3 } }, 'Integrated Manufacturing Workspace')
-        ),
-        h('form', { onSubmit: handleAuthSubmit, style: { padding: '0 24px 24px' } },
-          authError && h('div', { style: { background: '#fef2f2', color: '#b91c1c', padding: '9px 12px', borderRadius: 7, fontSize: 12.5, marginBottom: 14 } }, authError),
-          authMode === 'signup' && h('div', { className: 'form-group', style: { marginBottom: 11 } },
-            h('label', null, 'Full Name'),
-            h('input', { className: 'form-input', value: authForm.name, onChange: e => setAuthForm({ ...authForm, name: e.target.value }), required: true })
+    return h('div', null,
+      h('div', { className: 'modal-overlay', style: { background: '#0b1329' } },
+        h('div', { className: 'modal-card', style: { maxWidth: 410 } },
+          h('div', { style: { padding: '28px 24px 18px', textAlign: 'center' } },
+            h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', style: { width: 54, height: 54, borderRadius: 12, margin: '0 auto 14px', display: 'block', boxShadow: '0 4px 16px rgba(37,99,235,0.35)' } }),
+            h('h2', { style: { fontSize: 21, fontWeight: 800, color: '#0f172a' } }, 'ForgeLedger'),
+            h('p', { style: { fontSize: 13, color: '#64748b', marginTop: 3 } }, 'Integrated Manufacturing Workspace')
           ),
-          authMode === 'signup' && h('div', { className: 'form-group', style: { marginBottom: 11 } },
-            h('label', null, 'Company / Factory Name'),
-            h('input', { className: 'form-input', value: authForm.companyName, onChange: e => setAuthForm({ ...authForm, companyName: e.target.value }), required: true })
-          ),
-          h('div', { className: 'form-group', style: { marginBottom: 11 } },
-            h('label', null, 'Email Address'),
-            h('input', { className: 'form-input', type: 'email', value: authForm.email, onChange: e => setAuthForm({ ...authForm, email: e.target.value }), required: true })
-          ),
-          h('div', { className: 'form-group', style: { marginBottom: 18 } },
-            h('label', null, 'Password'),
-            h('input', { className: 'form-input', type: 'password', value: authForm.password, onChange: e => setAuthForm({ ...authForm, password: e.target.value }), required: true })
-          ),
-          h('button', { type: 'submit', className: 'btn btn-primary', style: { width: '100%', justifyContent: 'center', padding: '10px' } },
-            authMode === 'login' ? 'Sign in to Workspace' : 'Create Free Workspace'
-          ),
-          h('div', { style: { textAlign: 'center', marginTop: 14, fontSize: 12.5, color: '#64748b' } },
-            authMode === 'login' ? "Don't have a workspace? " : "Already have an account? ",
-            h('a', {
-              href: '#',
-              onClick: (e) => { e.preventDefault(); setAuthMode(authMode === 'login' ? 'signup' : 'login'); },
-              style: { color: '#2563eb', fontWeight: 600, textDecoration: 'none' }
-            }, authMode === 'login' ? 'Sign up' : 'Sign in')
+          h('form', { onSubmit: handleAuthSubmit, style: { padding: '0 24px 24px' } },
+            authError && h('div', { style: { background: '#fef2f2', color: '#b91c1c', padding: '9px 12px', borderRadius: 7, fontSize: 12.5, marginBottom: 14 } }, authError),
+            authMode === 'signup' && h('div', { className: 'form-group', style: { marginBottom: 11 } },
+              h('label', null, 'Full Name'),
+              h('input', { className: 'form-input', value: authForm.name, onChange: e => setAuthForm({ ...authForm, name: e.target.value }), required: true })
+            ),
+            authMode === 'signup' && h('div', { className: 'form-group', style: { marginBottom: 11 } },
+              h('label', null, 'Company / Factory Name'),
+              h('input', { className: 'form-input', value: authForm.companyName, onChange: e => setAuthForm({ ...authForm, companyName: e.target.value }), required: true })
+            ),
+            h('div', { className: 'form-group', style: { marginBottom: 11 } },
+              h('label', null, 'Email Address'),
+              h('input', { className: 'form-input', type: 'email', value: authForm.email, onChange: e => setAuthForm({ ...authForm, email: e.target.value }), required: true })
+            ),
+            h('div', { className: 'form-group', style: { marginBottom: 18 } },
+              h('label', null, 'Password'),
+              h('input', { className: 'form-input', type: 'password', value: authForm.password, onChange: e => setAuthForm({ ...authForm, password: e.target.value }), required: true })
+            ),
+            h('button', { type: 'submit', className: 'btn btn-primary', style: { width: '100%', justifyContent: 'center', padding: '10px' } },
+              authMode === 'login' ? 'Sign in to Workspace' : 'Create Free Workspace'
+            ),
+            h('div', { style: { textAlign: 'center', marginTop: 14, fontSize: 12.5, color: '#64748b' } },
+              authMode === 'login' ? "Don't have a workspace? " : "Already have an account? ",
+              h('a', {
+                href: '#',
+                onClick: (e) => { e.preventDefault(); setAuthMode(authMode === 'login' ? 'signup' : 'login'); },
+                style: { color: '#2563eb', fontWeight: 600, textDecoration: 'none' }
+              }, authMode === 'login' ? 'Sign up' : 'Sign in')
+            )
           )
         )
-      )
+      ),
+      h(ToastContainer, { toasts, onDismiss: removeToast })
     );
   }
 
@@ -1183,6 +1281,7 @@ function App() {
 
       // Content Body
       h('main', { className: 'content-body' },
+        h('div', { className: 'tab-pane-animate', key: activeTab },
 
         // ================= TAB: OVERVIEW (Fig. 8) =================
         activeTab === 'overview' && h('div', null,
@@ -2185,7 +2284,8 @@ function App() {
           )
         )
       )
-    ),
+    )
+  ),
 
     // ================= MODALS =================
     modalType === 'item' && h('div', { className: 'modal-overlay' },
@@ -2588,7 +2688,10 @@ function App() {
           h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setShowCompanyModal(false) }, 'Close')
         )
       )
-    )
+    ),
+
+    // Toast Notification System
+    h(ToastContainer, { toasts, onDismiss: removeToast })
   );
 }
 

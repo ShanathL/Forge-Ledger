@@ -1681,3 +1681,251 @@ body.dark-mode .pie-legend-row:hover,
 body.dark-mode .pie-legend-row.hovered {
   background: rgba(37, 99, 235, 0.2) !important;
 }
+
+
+/* ---------------------------------
+   REFINED UI ANIMATIONS & MICRO-INTERACTIONS
+-----------------------------------*/
+
+/* Smooth Tab / Page Transition */
+@keyframes pageFadeSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-pane-animate {
+  animation: pageFadeSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  width: 100%;
+}
+
+/* Micro-interaction Spring Press for Interactive Elements */
+.btn:active,
+.header-logout-btn:active,
+.sidebar-toggle-btn:active,
+.theme-toggle-btn:active,
+.filter-pill:active,
+.modal-close:active,
+.quick-action-item:active,
+.sidebar-account-btn:active,
+.sidebar-company-btn:active {
+  transform: scale(0.96) !important;
+  transition: transform 0.08s ease !important;
+}
+
+/* Interactive Card & Widget Hover Elevation */
+.card,
+.metric-card,
+.chart-card,
+.quick-action-item {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease !important;
+}
+
+.metric-card:hover,
+.card:hover,
+.chart-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -4px rgba(15, 23, 42, 0.08), 0 4px 8px -2px rgba(15, 23, 42, 0.03) !important;
+}
+
+body.dark-mode .metric-card:hover,
+body.dark-mode .card:hover,
+body.dark-mode .chart-card:hover {
+  box-shadow: 0 12px 28px -5px rgba(0, 0, 0, 0.6), 0 0 16px -2px rgba(37, 99, 235, 0.16) !important;
+  border-color: rgba(59, 130, 246, 0.35) !important;
+}
+
+/* Modern Glassmorphism & Spring Curve for Modals */
+@keyframes modalSpringIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.94) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-overlay {
+  background: rgba(15, 23, 42, 0.65) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  transition: opacity 0.2s ease;
+}
+
+.modal-card {
+  animation: modalSpringIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark-mode .modal-card {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Pulse Glow for Live Status Dot */
+@keyframes pulseDotGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.status-dot {
+  animation: pulseDotGlow 2.2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+/* Table Row Smooth Hover Highlight */
+.data-table tbody tr {
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.data-table tbody tr:hover {
+  background-color: rgba(37, 99, 235, 0.04) !important;
+}
+
+body.dark-mode .data-table tbody tr:hover {
+  background-color: rgba(37, 99, 235, 0.12) !important;
+}
+
+/* Modern Toast Notification Container & Cards */
+.toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  max-width: 380px;
+  width: calc(100vw - 48px);
+}
+
+@keyframes toastSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(36px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.toast-item {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  animation: toastSlideIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  cursor: pointer;
+  transition: transform 0.16s ease, opacity 0.16s ease, box-shadow 0.16s ease;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.toast-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px -5px rgba(0, 0, 0, 0.16), 0 10px 12px -6px rgba(0, 0, 0, 0.06);
+}
+
+.toast-icon-wrap {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toast-message {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.toast-close-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 3px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.toast-close-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--border-subtle);
+}
+
+.toast-success {
+  border-left: 4px solid #10b981;
+}
+
+.toast-success .toast-icon-wrap {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.toast-error {
+  border-left: 4px solid #ef4444;
+}
+
+.toast-error .toast-icon-wrap {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.toast-warning {
+  border-left: 4px solid #f59e0b;
+}
+
+.toast-warning .toast-icon-wrap {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.toast-info {
+  border-left: 4px solid #2563eb;
+}
+
+.toast-info .toast-icon-wrap {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+}
+
+body.dark-mode .toast-item {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow: 0 14px 30px -5px rgba(0, 0, 0, 0.65);
+}
+
+body.dark-mode .toast-message {
+  color: #f8fafc;
+}
+
+body.dark-mode .toast-close-btn:hover {
+  background-color: #334155;
+  color: #f8fafc;
+}
