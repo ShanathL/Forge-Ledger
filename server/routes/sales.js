@@ -17,14 +17,15 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/sales
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { invoice_no, customer, issued_date, due_date, amount, status } = req.body;
+    const { invoice_no, customer, issued_date, due_date, amount, status, items } = req.body;
     const sale = await db.createSale(req.user.id, req.user.company_id, {
       invoice_no,
       customer,
       issued_date,
       due_date,
       amount,
-      status
+      status,
+      items
     });
     res.status(201).json({ success: true, data: sale });
   } catch (err) {

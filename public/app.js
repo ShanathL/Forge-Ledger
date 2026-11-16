@@ -111,6 +111,377 @@ function exportToCsv(filename, rows, headerMap) {
   }
 }
 
+// Date Range Filtering Utility for Invoices, Expenses & Production
+function matchesDateFilter(dateStr, filterPreset = 'all', customStart = '', customEnd = '') {
+  if (!filterPreset || filterPreset === 'all') return true;
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return true;
+
+  const now = new Date();
+
+  if (filterPreset === 'this_month') {
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }
+  if (filterPreset === 'last_30_days') {
+    const diffTime = now.getTime() - d.getTime();
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+    return diffDays >= -1 && diffDays <= 30;
+  }
+  if (filterPreset === 'this_quarter') {
+    const currentQuarter = Math.floor(now.getMonth() / 3);
+    const itemQuarter = Math.floor(d.getMonth() / 3);
+    return d.getFullYear() === now.getFullYear() && itemQuarter === currentQuarter;
+  }
+  if (filterPreset === 'custom') {
+    const itemTime = d.getTime();
+    if (customStart) {
+      const s = new Date(customStart + 'T00:00:00');
+      if (!isNaN(s.getTime()) && itemTime < s.getTime()) return false;
+    }
+    if (customEnd) {
+      const e = new Date(customEnd + 'T23:59:59.999');
+      if (!isNaN(e.getTime()) && itemTime > e.getTime()) return false;
+    }
+    return true;
+  }
+  return true;
+}
+
+// Reusable Date Range Filter Bar Component
+function DateRangeFilterBar({
+  activeFilter = 'all',
+  onChangeFilter,
+  customStart = '',
+  onChangeCustomStart,
+  customEnd = '',
+  onChangeCustomEnd
+}) {
+  const presets = [
+    { id: 'all', label: 'All Time' },
+    { id: 'this_month', label: 'This Month' },
+    { id: 'last_30_days', label: 'Last 30 Days' },
+    { id: 'this_quarter', label: 'This Quarter' },
+    { id: 'custom', label: 'Custom Range' }
+  ];
+
+  return h('div', {
+    className: 'date-range-filter-bar',
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      flexWrap: 'wrap',
+      margin: '6px 0 14px 0',
+      padding: '8px 12px',
+      background: 'var(--bg-secondary)',
+      borderRadius: 10,
+      border: '1px solid var(--border-light)'
+    }
+  },
+    h('span', {
+      style: {
+        fontSize: 12,
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5
+      }
+    }, '📅 Filter Period:'),
+    h('div', { style: { display: 'inline-flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
+      presets.map(p => h('button', {
+        key: p.id,
+        type: 'button',
+        className: `btn ${activeFilter === p.id ? 'btn-primary' : 'btn-outline'}`,
+        style: {
+          padding: '4px 11px',
+          fontSize: 11.5,
+          borderRadius: 20,
+          fontWeight: activeFilter === p.id ? 700 : 500,
+          transition: 'all 0.15s ease'
+        },
+        onClick: () => onChangeFilter(p.id)
+      }, p.label))
+    ),
+    activeFilter === 'custom' && h('div', {
+      style: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        marginLeft: 4,
+        background: 'var(--bg-card)',
+        padding: '3px 8px',
+        borderRadius: 8,
+        border: '1px solid var(--border-light)'
+      }
+    },
+      h('input', {
+        type: 'date',
+        className: 'form-input',
+        style: { fontSize: 11.5, padding: '3px 6px', height: 28, width: 130 },
+        value: customStart,
+        onChange: e => onChangeCustomStart && onChangeCustomStart(e.target.value)
+      }),
+      h('span', { style: { fontSize: 11.5, color: 'var(--text-muted)' } }, 'to'),
+      h('input', {
+        type: 'date',
+        className: 'form-input',
+        style: { fontSize: 11.5, padding: '3px 6px', height: 28, width: 130 },
+        value: customEnd,
+        onChange: e => onChangeCustomEnd && onChangeCustomEnd(e.target.value)
+      })
+    )
+  );
+}
+
+// Public Landing Showcase Component (Brought over from Home.jsx for visitor product preview)
+function PublicLandingPage({ onLogin, onSignup }) {
+  const landingFeatures = [
+    { icon: 'inventory', title: 'Inventory management', text: 'Keep stock, SKU codes, units and GST rates organized.', tone: 'blue' },
+    { icon: 'sales', title: 'Sales & GST invoices', text: 'Record multi-item sales and calculate taxes consistently.', tone: 'violet' },
+    { icon: 'expenses', title: 'Expense tracking', text: 'Understand where money goes with clear expense records.', tone: 'coral' },
+    { icon: 'reports', title: 'Business reports', text: 'See trends and make decisions with sales summaries.', tone: 'mint' },
+    { icon: 'production', title: 'Production', text: 'Bring production activity and material usage into view.', tone: 'amber' },
+    { icon: 'payroll', title: 'Team & payroll', text: 'Build a foundation for employee and payroll workflows.', tone: 'cyan' },
+  ];
+
+  const landingSales = [
+    { id: 'INV-1058', name: 'ABC Engineering', amount: '₹24,800', date: 'Today', tone: 'blue' },
+    { id: 'INV-1057', name: 'Sunrise Traders', amount: '₹12,450', date: 'Yesterday', tone: 'mint' },
+    { id: 'INV-1056', name: 'Mehta Enterprises', amount: '₹18,900', date: '12 Oct', tone: 'violet' }
+  ];
+
+  return h('div', { className: 'home-page' },
+    // Header Navigation
+    h('header', { className: 'home-nav' },
+      h('div', { className: 'home-brand', style: { cursor: 'pointer' }, onClick: () => window.scrollTo({ top: 0, behavior: 'smooth' }) },
+        h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', style: { width: 34, height: 34, borderRadius: 8, objectFit: 'contain' } }),
+        h('span', null, 'Forge', h('span', null, 'Ledger'))
+      ),
+      h('nav', null,
+        h('a', { className: 'selected', href: '#home' }, 'Home'),
+        h('a', { href: '#features' }, 'Features'),
+        h('a', { href: '#how-it-works' }, 'How it works')
+      ),
+      h('div', { className: 'home-nav-actions' },
+        h('button', { type: 'button', className: 'nav-signin', onClick: onLogin, style: { background: 'none', border: 'none', cursor: 'pointer' } }, 'Sign in'),
+        h('button', { type: 'button', className: 'nav-create', onClick: onSignup, style: { border: 'none', cursor: 'pointer' } },
+          'Create account ',
+          h(Icon, { name: 'arrowRight', size: 14 })
+        )
+      )
+    ),
+
+    // Main Content
+    h('main', { id: 'home' },
+      // Hero Section
+      h('section', { className: 'home-hero' },
+        h('div', { className: 'hero-orb orb-one' }),
+        h('div', { className: 'hero-orb orb-two' }),
+        h('div', { className: 'hero-copy' },
+          h('div', { className: 'hero-kicker' },
+            h(Icon, { name: 'zap', size: 14 }),
+            ' SIMPLE, POWERFUL BUSINESS MANAGEMENT'
+          ),
+          h('h1', null,
+            'Run your business.',
+            h('br', null),
+            h('span', null, 'Know your numbers.')
+          ),
+          h('p', { className: 'hero-description' },
+            'Manage inventory, multi-item sales, GST invoices and expenses in one clear workspace—so you can spend less time chasing numbers and more time growing.'
+          ),
+          h('div', { className: 'hero-actions' },
+            h('button', { type: 'button', className: 'hero-primary', onClick: onSignup, style: { border: 'none', cursor: 'pointer' } },
+              'Get started free ',
+              h(Icon, { name: 'arrowRight', size: 16 })
+            ),
+            h('a', { className: 'hero-secondary', href: '#features' },
+              'Explore features'
+            )
+          ),
+          h('div', { className: 'hero-proof' },
+            h('span', null, h(Icon, { name: 'checkCircle', size: 15 }), ' Easy to get started'),
+            h('span', null, h(Icon, { name: 'checkCircle', size: 15 }), ' Multi-company data isolation'),
+            h('span', null, h(Icon, { name: 'checkCircle', size: 15 }), ' Built for growing teams')
+          ),
+          h('div', { className: 'hero-trust' },
+            h('div', { className: 'trust-icon' }, h(Icon, { name: 'checkCircle', size: 18 })),
+            h('div', null,
+              h('b', null, 'Your business data stays organized'),
+              h('small', null, 'Workspace-based access and a focused workflow')
+            )
+          )
+        ),
+
+        // Hero Visual Showcase Dashboard
+        h('div', { className: 'hero-visual' },
+          h('div', { className: 'visual-glow' }),
+          h('div', { className: 'mock-dashboard' },
+            // Mock Sidebar
+            h('div', { className: 'mock-sidebar' },
+              h('div', { className: 'mock-brand' },
+                h('span', { className: 'mini-logo' }, h('img', { src: '/logo.png', style: { width: 18, height: 18, borderRadius: 4, objectFit: 'contain' } })),
+                ' ForgeLedger'
+              ),
+              h('div', { className: 'mock-nav active' }, h(Icon, { name: 'overview', size: 14 }), ' Overview'),
+              h('div', { className: 'mock-nav' }, h(Icon, { name: 'inventory', size: 14 }), ' Inventory'),
+              h('div', { className: 'mock-nav' }, h(Icon, { name: 'sales', size: 14 }), ' Sales'),
+              h('div', { className: 'mock-nav' }, h(Icon, { name: 'expenses', size: 14 }), ' Expenses'),
+              h('div', { className: 'mock-nav' }, h(Icon, { name: 'reports', size: 14 }), ' Reports'),
+              h('div', { className: 'mock-side-bottom' },
+                h('div', { className: 'mock-avatar' }, 'A'),
+                h('span', null, 'ABC Manufacturing', h('small', null, 'Workspace owner'))
+              )
+            ),
+            // Mock Main Area
+            h('div', { className: 'mock-main' },
+              h('div', { className: 'mock-top' },
+                h('span', null, 'Business overview'),
+                h('span', { className: 'mock-date' }, 'This month >')
+              ),
+              h('div', { className: 'mock-heading' },
+                h('div', null,
+                  h('small', null, 'ACTIVE SESSION'),
+                  h('h3', null, 'Your business at a glance')
+                ),
+                h('span', { className: 'mock-status' }, h('i', null), ' Live overview')
+              ),
+              h('div', { className: 'mock-stats' },
+                h('div', { className: 'mock-stat stat-blue' },
+                  h('span', { className: 'stat-icon' }, h(Icon, { name: 'sales', size: 14 })),
+                  h('small', null, 'Total sales'),
+                  h('b', null, '₹2,48,500'),
+                  h('em', null, '↗ 12.8% this month')
+                ),
+                h('div', { className: 'mock-stat stat-violet' },
+                  h('span', { className: 'stat-icon' }, h(Icon, { name: 'expenses', size: 14 })),
+                  h('small', null, 'Expenses'),
+                  h('b', null, '₹53,200'),
+                  h('em', null, '↘ 4.2% this month')
+                ),
+                h('div', { className: 'mock-stat stat-mint' },
+                  h('span', { className: 'stat-icon' }, h(Icon, { name: 'inventory', size: 14 })),
+                  h('small', null, 'Inventory value'),
+                  h('b', null, '₹4,12,300'),
+                  h('em', null, '126 active items')
+                )
+              ),
+              h('div', { className: 'mock-bottom' },
+                h('div', { className: 'mock-chart-card' },
+                  h('div', { className: 'mock-card-title' }, 'Sales performance ', h('span', null, 'Last 6 months')),
+                  h('div', { className: 'mock-chart' },
+                    h('div', { className: 'chart-y' }, h('span', null, '₹2L'), h('span', null, '₹1L'), h('span', null, '₹0')),
+                    h('div', { className: 'chart-bars' },
+                      [38, 53, 47, 70, 62, 88].map((val, idx) =>
+                        h('div', { className: 'chart-bar-wrap', key: idx },
+                          h('div', { className: `chart-bar bar-${idx}`, style: { height: `${val}%` } }),
+                          h('small', null, ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'][idx])
+                        )
+                      )
+                    )
+                  )
+                ),
+                h('div', { className: 'mock-sales-card' },
+                  h('div', { className: 'mock-card-title' }, 'Recent sales ', h('span', null, 'View all ↗')),
+                  landingSales.map(s =>
+                    h('div', { className: 'mock-sale', key: s.id },
+                      h('div', { className: `sale-avatar ${s.tone}` }, h(Icon, { name: 'sales', size: 12 })),
+                      h('div', { className: 'sale-name' },
+                        h('b', null, s.name),
+                        h('small', null, `${s.id} · ${s.date}`)
+                      ),
+                      h('strong', null, s.amount)
+                    )
+                  )
+                )
+              ),
+              h('div', { className: 'mock-footer' },
+                h('span', null, h('i', null), ' Inventory synced'),
+                h('span', null, 'Updated just now')
+              )
+            )
+          ),
+          // Float Chips
+          h('div', { className: 'float-chip chip-top' },
+            h('span', { className: 'float-icon purple' }, h(Icon, { name: 'reports', size: 16 })),
+            h('span', null, h('b', null, 'Sales are growing'), h('small', null, '12.8% this month')),
+            h('span', { className: 'float-up' }, '↗')
+          ),
+          h('div', { className: 'float-chip chip-bottom' },
+            h('span', { className: 'float-icon green' }, h(Icon, { name: 'checkCircle', size: 16 })),
+            h('span', null, h('b', null, 'Stock status'), h('small', null, 'Inventory overview ready'))
+          )
+        )
+      ),
+
+      // Features Section
+      h('section', { className: 'home-features', id: 'features' },
+        h('div', { className: 'section-heading' },
+          h('span', { className: 'section-kicker' }, 'ONE WORKSPACE, LESS BUSYWORK'),
+          h('h2', null, 'Everything you need to ', h('span', null, 'stay in control.')),
+          h('p', null, 'From the first stock entry to your latest sale, keep the essentials connected.')
+        ),
+        h('div', { className: 'feature-grid' },
+          landingFeatures.map(f =>
+            h('article', { className: 'feature-card', key: f.title },
+              h('div', { className: `feature-icon ${f.tone}` }, h(Icon, { name: f.icon, size: 22 })),
+              h('h3', null, f.title),
+              h('p', null, f.text),
+              h('button', {
+                type: 'button',
+                onClick: onSignup,
+                style: { background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }
+              }, 'Explore ', h(Icon, { name: 'arrowRight', size: 13 }))
+            )
+          )
+        )
+      ),
+
+      // CTA Section
+      h('section', { className: 'home-cta', id: 'how-it-works' },
+        h('div', { className: 'cta-spark spark-a' }),
+        h('div', { className: 'cta-spark spark-b' }),
+        h('div', { className: 'cta-content' },
+          h('span', { className: 'cta-label' }, h(Icon, { name: 'zap', size: 14 }), ' A clearer view starts here'),
+          h('h2', null, 'Make room for the work', h('br', null), 'that moves you forward.'),
+          h('p', null, 'Set up your workspace and bring your business essentials together.'),
+          h('button', {
+            type: 'button',
+            className: 'cta-button',
+            onClick: onSignup,
+            style: { border: 'none', cursor: 'pointer' }
+          }, 'Create your free account ', h(Icon, { name: 'arrowRight', size: 16 })),
+          h('small', null, 'No complicated setup. Start with the essentials.')
+        ),
+        h('div', { className: 'cta-art' },
+          h('div', { className: 'cta-ring ring-one' }),
+          h('div', { className: 'cta-ring ring-two' }),
+          h('div', { className: 'cta-tile tile-one' }, h(Icon, { name: 'inventory', size: 24 })),
+          h('div', { className: 'cta-tile tile-two' }, h(Icon, { name: 'expenses', size: 24 })),
+          h('div', { className: 'cta-tile tile-three' }, h(Icon, { name: 'reports', size: 26 })),
+          h('div', { className: 'cta-tile tile-four' }, h(Icon, { name: 'sales', size: 22 }))
+        )
+      )
+    ),
+
+    // Footer
+    h('footer', { className: 'home-footer' },
+      h('div', { className: 'home-brand' },
+        h('img', { src: '/logo.png', alt: 'ForgeLedger', style: { width: 28, height: 28, borderRadius: 6, objectFit: 'contain' } }),
+        h('span', null, 'Forge', h('span', null, 'Ledger'))
+      ),
+      h('span', null, 'Clear numbers. Better decisions.'),
+      h('div', null,
+        h('button', { type: 'button', onClick: onLogin, style: { background: 'none', border: 'none', color: '#5e6d84', fontWeight: 700, cursor: 'pointer' } }, 'Sign in'),
+        h('button', { type: 'button', onClick: onSignup, style: { background: 'none', border: 'none', color: '#5e6d84', fontWeight: 700, cursor: 'pointer' } }, 'Create account')
+      ),
+      h('small', null, `© ${new Date().getFullYear()} ForgeLedger. All rights reserved.`)
+    )
+  );
+}
+
 // Enhanced Asset Valuation Donut Chart (Finished Goods vs Raw Materials)
 function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory }) {
   const [hoveredSlice, setHoveredSlice] = useState(null);
@@ -223,6 +594,7 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory 
               filter: isHovered ? `drop-shadow(0 0 8px ${slice.color})` : 'none',
               opacity: hoveredSlice && !isHovered ? 0.6 : 1
             },
+            onClick: () => onSelectCategory && onSelectCategory(slice.name.includes('Raw') ? 'rawMaterials' : 'inventory'),
             onMouseEnter: () => setHoveredSlice(slice.name),
             onMouseLeave: () => setHoveredSlice(null)
           });
@@ -1269,6 +1641,22 @@ function App() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
+  // Preset Date Range Filter States (This Month, Last 30 Days, This Quarter, Custom)
+  const [salesDateFilter, setSalesDateFilter] = useState('all');
+  const [salesCustomStart, setSalesCustomStart] = useState('');
+  const [salesCustomEnd, setSalesCustomEnd] = useState('');
+
+  const [expenseDateFilter, setExpenseDateFilter] = useState('all');
+  const [expenseCustomStart, setExpenseCustomStart] = useState('');
+  const [expenseCustomEnd, setExpenseCustomEnd] = useState('');
+
+  const [prodDateFilter, setProdDateFilter] = useState('all');
+  const [prodCustomStart, setProdCustomStart] = useState('');
+  const [prodCustomEnd, setProdCustomEnd] = useState('');
+
+  // Public Landing Showcase Toggle (Controls modal visibility)
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
   // Modal States
   const [modalType, setModalType] = useState(null); // 'item', 'sale', 'expense', 'employee', 'production'
   const [formData, setFormData] = useState({});
@@ -1328,7 +1716,7 @@ function App() {
     });
   }, [finishedGoods, searchQuery, inventoryCategoryFilter]);
 
-  // Filtered Sales (Supports Status Filter Pills & Search)
+  // Filtered Sales (Supports Status Filter Pills, Date Range Presets & Search)
   const filteredSales = useMemo(() => {
     const q = (searchQuery || '').toLowerCase().trim();
     return (sales || []).filter(s => {
@@ -1336,27 +1724,29 @@ function App() {
       if (salesFilter === 'paid' && s.status !== 'Paid') return false;
       if (salesFilter === 'pending' && s.status !== 'Pending') return false;
       if (salesFilter === 'overdue' && s.status !== 'Overdue') return false;
+      if (!matchesDateFilter(s.issued_date || s.created_at, salesDateFilter, salesCustomStart, salesCustomEnd)) return false;
       if (!q) return true;
       const customer = (s.customer || '').toLowerCase();
       const invoice = (s.invoice_no || '').toLowerCase();
       return customer.includes(q) || invoice.includes(q);
     });
-  }, [sales, searchQuery, salesFilter]);
+  }, [sales, searchQuery, salesFilter, salesDateFilter, salesCustomStart, salesCustomEnd]);
 
-  // Filtered Expenses (Supports Category Filter Pills & Search)
+  // Filtered Expenses (Supports Category Filter Pills, Date Range Presets & Search)
   const filteredExpenses = useMemo(() => {
     const q = (searchQuery || '').toLowerCase().trim();
     return (expenses || []).filter(e => {
       if (!e) return false;
       if (expenseCategoryFilter !== 'all' && (e.category || '').toLowerCase() !== expenseCategoryFilter.toLowerCase()) return false;
+      if (!matchesDateFilter(e.expense_date || e.created_at, expenseDateFilter, expenseCustomStart, expenseCustomEnd)) return false;
       if (!q) return true;
       const desc = (e.description || '').toLowerCase();
       const cat = (e.category || '').toLowerCase();
       return desc.includes(q) || cat.includes(q);
     });
-  }, [expenses, searchQuery, expenseCategoryFilter]);
+  }, [expenses, searchQuery, expenseCategoryFilter, expenseDateFilter, expenseCustomStart, expenseCustomEnd]);
 
-  // Filtered Production Runs (Supports Status Filter Pills & Search)
+  // Filtered Production Runs (Supports Status Filter Pills, Date Range Presets & Search)
   const filteredProductionRuns = useMemo(() => {
     const q = (searchQuery || '').toLowerCase().trim();
     return (productionRuns || []).filter(r => {
@@ -1364,12 +1754,13 @@ function App() {
       if (productionStatusFilter === 'in_progress' && r.status !== 'In progress') return false;
       if (productionStatusFilter === 'planned' && r.status !== 'Planned') return false;
       if (productionStatusFilter === 'completed' && r.status !== 'Completed') return false;
+      if (!matchesDateFilter(r.run_date || r.created_at, prodDateFilter, prodCustomStart, prodCustomEnd)) return false;
       if (!q) return true;
       const prod = (r.product || '').toLowerCase();
       const date = (r.run_date || '').toLowerCase();
       return prod.includes(q) || date.includes(q);
     });
-  }, [productionRuns, searchQuery, productionStatusFilter]);
+  }, [productionRuns, searchQuery, productionStatusFilter, prodDateFilter, prodCustomStart, prodCustomEnd]);
 
   // Filtered Employees (Supports Active/Inactive Filter Pills & Search)
   const filteredEmployees = useMemo(() => {
@@ -1864,13 +2255,26 @@ function App() {
     );
   }
 
-  // Unauthenticated screen
+  // Unauthenticated screen: Public landing showcase + Auth modal
   if (!currentUser) {
-    return h('div', null,
-      h('div', { className: 'modal-overlay', style: { background: '#0b1329' } },
-        h('div', { className: 'modal-card', style: { maxWidth: 410 } },
+    return h('div', { style: { position: 'relative' } },
+      h(PublicLandingPage, {
+        onLogin: () => { setAuthMode('login'); setShowAuthModal(true); },
+        onSignup: () => { setAuthMode('signup'); setShowAuthModal(true); }
+      }),
+      showAuthModal && h('div', {
+        className: 'modal-overlay',
+        style: { background: 'rgba(11, 19, 41, 0.85)', backdropFilter: 'blur(6px)', zIndex: 1000 },
+        onClick: (e) => { if (e.target === e.currentTarget) setShowAuthModal(false); }
+      },
+        h('div', { className: 'modal-card', style: { maxWidth: 410, position: 'relative' } },
+          h('button', {
+            className: 'modal-close',
+            style: { position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#64748b' },
+            onClick: () => setShowAuthModal(false)
+          }, '✕'),
           h('div', { style: { padding: '28px 24px 18px', textAlign: 'center' } },
-            h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', style: { width: 54, height: 54, borderRadius: 12, margin: '0 auto 14px', display: 'block', boxShadow: '0 4px 16px rgba(37,99,235,0.35)' } }),
+            h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', style: { width: 54, height: 54, borderRadius: 12, margin: '0 auto 14px', display: 'block', boxShadow: '0 4px 16px rgba(37,99,235,0.35)', objectFit: 'contain' } }),
             h('h2', { style: { fontSize: 21, fontWeight: 800, color: '#0f172a' } }, 'ForgeLedger'),
             h('p', { style: { fontSize: 13, color: '#64748b', marginTop: 3 } }, 'Integrated Manufacturing Workspace')
           ),
@@ -2611,6 +3015,16 @@ function App() {
             )
           ),
 
+          // Date Range Presets Filter Bar (This Month, Last 30 Days, This Quarter, Custom)
+          h(DateRangeFilterBar, {
+            activeFilter: salesDateFilter,
+            onChangeFilter: setSalesDateFilter,
+            customStart: salesCustomStart,
+            onChangeCustomStart: setSalesCustomStart,
+            customEnd: salesCustomEnd,
+            onChangeCustomEnd: setSalesCustomEnd
+          }),
+
           // Search Bar Row
           h('div', { className: 'search-bar-row' },
             h('div', { className: 'search-wrapper' },
@@ -2665,9 +3079,9 @@ function App() {
                             h('button', {
                               className: 'btn btn-outline',
                               style: { padding: '4px 8px', fontSize: 11.5 },
-                              title: 'View & Print Tax Invoice',
+                              title: 'View & Download PDF / Print Tax Invoice',
                               onClick: () => { setSelectedInvoice(sale); setModalType('invoicePreview'); }
-                            }, '🖨️ Invoice'),
+                            }, '🖨️ Download PDF / Print'),
                             sale.status !== 'Paid' && h('button', {
                               className: 'btn btn-outline',
                               style: { padding: '4px 8px', fontSize: 11.5, color: '#059669', borderColor: '#10b981' },
@@ -2770,6 +3184,16 @@ function App() {
               }, pill.label)
             )
           ),
+
+          // Date Range Presets Filter Bar (This Month, Last 30 Days, This Quarter, Custom)
+          h(DateRangeFilterBar, {
+            activeFilter: expenseDateFilter,
+            onChangeFilter: setExpenseDateFilter,
+            customStart: expenseCustomStart,
+            onChangeCustomStart: setExpenseCustomStart,
+            customEnd: expenseCustomEnd,
+            onChangeCustomEnd: setExpenseCustomEnd
+          }),
 
           // Search Row
           h('div', { className: 'search-bar-row' },
@@ -3023,6 +3447,16 @@ function App() {
 
           // Production Batch Health & Status Chart
           h(ProductionStatusChart, { productionRuns }),
+
+          // Date Range Presets Filter Bar (This Month, Last 30 Days, This Quarter, Custom)
+          h(DateRangeFilterBar, {
+            activeFilter: prodDateFilter,
+            onChangeFilter: setProdDateFilter,
+            customStart: prodCustomStart,
+            onChangeCustomStart: setProdCustomStart,
+            customEnd: prodCustomEnd,
+            onChangeCustomEnd: setProdCustomEnd
+          }),
 
           // Filter Pills Bar (All, In progress, Planned, Completed) + Search Bar
           h('div', { className: 'table-controls' },
@@ -3535,151 +3969,242 @@ function App() {
       )
     ),
 
-    modalType === 'sale' && h('div', { className: 'modal-overlay' },
-      h('div', { className: 'modal-card', style: { maxWidth: 540 } },
-        h('div', { className: 'modal-header' },
-          h('h3', null, formData.id ? 'Edit Sales Invoice' : 'New Sales Invoice'),
-          h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
-        ),
-        h('form', { onSubmit: handleCreateSale },
-          h('div', { className: 'modal-body' },
-            // Quick Product Selector from Finished Goods
-            h('div', { className: 'form-group' },
-              h('label', null, 'Product / Finished Good (Optional quick-fill)'),
-              h('select', {
-                className: 'form-select',
-                onChange: e => {
-                  const sel = finishedGoods.find(g => String(g.id) === e.target.value);
-                  if (sel) {
-                    const qty = Number(formData.quantity) || 1;
-                    const unitPrice = Number(sel.unit_price) || Number(sel.unit_cost) * 1.3 || 1000;
-                    setFormData({
-                      ...formData,
-                      product_name: sel.item_name || sel.name,
-                      unit_price: unitPrice,
-                      amount: (unitPrice * qty).toFixed(2),
-                      invoice_no: formData.invoice_no || `INV-${Date.now().toString().slice(-4)}`
-                    });
-                  }
-                }
-              },
-                h('option', { value: '' }, '-- Select existing finished good --'),
-                finishedGoods.map(g => h('option', { key: g.id, value: g.id }, `${g.item_name || g.name} (₹${g.unit_price || g.unit_cost || 0})`))
-              )
+    modalType === 'sale' && (() => {
+      const items = (formData.items && Array.isArray(formData.items) && formData.items.length > 0) ?
+        formData.items :
+        [{ product_id: '', product_name: '', quantity: 1, unit_price: 0, line_total: 0 }];
+
+      const updateLine = (idx, key, val) => {
+        const next = [...items];
+        const line = { ...next[idx], [key]: val };
+        if (key === 'product_id') {
+          const sel = finishedGoods.find(g => String(g.id) === String(val));
+          if (sel) {
+            line.product_name = sel.item_name || sel.name;
+            const price = Number(sel.unit_price) || Number(sel.unit_cost) * 1.3 || 1000;
+            line.unit_price = price;
+            line.line_total = Math.round((Number(line.quantity) || 1) * price * 100) / 100;
+          }
+        } else if (key === 'quantity' || key === 'unit_price') {
+          const q = key === 'quantity' ? (Number(val) || 0) : (Number(line.quantity) || 0);
+          const p = key === 'unit_price' ? (Number(val) || 0) : (Number(line.unit_price) || 0);
+          line.line_total = Math.round(q * p * 100) / 100;
+        }
+        next[idx] = line;
+        const sub = next.reduce((sum, it) => sum + (Number(it.line_total) || 0), 0);
+        const gst = Math.round(sub * 0.18 * 100) / 100;
+        const grand = Math.round((sub + gst) * 100) / 100;
+        setFormData({ ...formData, items: next, amount: grand.toFixed(2) });
+      };
+
+      const addLine = () => {
+        const next = [...items, { product_id: '', product_name: '', quantity: 1, unit_price: 0, line_total: 0 }];
+        setFormData({ ...formData, items: next });
+      };
+
+      const removeLine = (idx) => {
+        if (items.length <= 1) {
+          addToast('Sale invoice must contain at least one product line', 'warning');
+          return;
+        }
+        const next = items.filter((_, i) => i !== idx);
+        const sub = next.reduce((sum, it) => sum + (Number(it.line_total) || 0), 0);
+        const gst = Math.round(sub * 0.18 * 100) / 100;
+        const grand = Math.round((sub + gst) * 100) / 100;
+        setFormData({ ...formData, items: next, amount: grand.toFixed(2) });
+      };
+
+      const subtotal = items.reduce((sum, it) => sum + (Number(it.line_total) || 0), 0);
+      const cgst = Math.round(subtotal * 0.09 * 100) / 100;
+      const sgst = Math.round(subtotal * 0.09 * 100) / 100;
+      const totalGst = Math.round((cgst + sgst) * 100) / 100;
+      const grandTotal = Math.round((subtotal + totalGst) * 100) / 100;
+
+      return h('div', { className: 'modal-overlay' },
+        h('div', { className: 'modal-card', style: { maxWidth: 740, width: '95%', maxHeight: '92vh', overflowY: 'auto' } },
+          h('div', { className: 'modal-header' },
+            h('div', null,
+              h('h3', { style: { margin: 0 } }, formData.id ? 'Edit Sales Invoice' : 'New Multi-Item Sales Invoice'),
+              h('div', { style: { fontSize: 12, color: '#64748b' } }, 'Build itemized invoices with GST calculation & automatic stock decrement')
             ),
-            h('div', { className: 'form-group' },
-              h('label', null, 'Customer Name'),
-              h('input', {
-                className: 'form-input',
-                placeholder: 'e.g. Apex Industrial Corp',
-                required: true,
-                value: formData.customer || '',
-                onChange: e => setFormData({ ...formData, customer: e.target.value })
-              })
-            ),
-            h('div', { className: 'form-group' },
-              h('label', null, 'Invoice Number'),
-              h('input', {
-                className: 'form-input',
-                placeholder: 'e.g. INV-1049',
-                value: formData.invoice_no || '',
-                onChange: e => setFormData({ ...formData, invoice_no: e.target.value })
-              })
-            ),
-            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-              h('div', { className: 'form-group' },
-                h('label', null, 'Quantity (Units)'),
-                h('input', {
-                  className: 'form-input',
-                  type: 'number',
-                  min: '1',
-                  placeholder: '1',
-                  value: formData.quantity || '1',
-                  onChange: e => {
-                    const q = Number(e.target.value) || 1;
-                    const up = Number(formData.unit_price) || 0;
-                    setFormData({
-                      ...formData,
-                      quantity: q,
-                      amount: up > 0 ? (up * q).toFixed(2) : formData.amount
-                    });
-                  }
-                })
+            h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
+          ),
+          h('form', { onSubmit: handleCreateSale },
+            h('div', { className: 'modal-body', style: { padding: '18px 22px' } },
+              // Customer & Invoice Details
+              h('div', { style: { display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 14, marginBottom: 14 } },
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Customer / Buyer Name'),
+                  h('input', {
+                    className: 'form-input',
+                    placeholder: 'e.g. Apex Industrial Corp',
+                    required: true,
+                    value: formData.customer || '',
+                    onChange: e => setFormData({ ...formData, customer: e.target.value })
+                  })
+                ),
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Invoice Number'),
+                  h('input', {
+                    className: 'form-input',
+                    placeholder: 'e.g. INV-1049',
+                    value: formData.invoice_no || '',
+                    onChange: e => setFormData({ ...formData, invoice_no: e.target.value })
+                  })
+                )
               ),
-              h('div', { className: 'form-group' },
-                h('label', null, 'Unit Rate (₹)'),
-                h('input', {
-                  className: 'form-input',
-                  type: 'number',
-                  step: '0.01',
-                  placeholder: '0.00',
-                  value: formData.unit_price || '',
-                  onChange: e => {
-                    const up = Number(e.target.value) || 0;
-                    const q = Number(formData.quantity) || 1;
-                    setFormData({
-                      ...formData,
-                      unit_price: up,
-                      amount: (up * q).toFixed(2)
-                    });
-                  }
-                })
-              )
-            ),
-            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-              h('div', { className: 'form-group' },
-                h('label', null, 'Issued Date'),
-                h('input', {
-                  className: 'form-input',
-                  type: 'date',
-                  value: formData.issued_date || new Date().toISOString().split('T')[0],
-                  onChange: e => setFormData({ ...formData, issued_date: e.target.value })
-                })
+              h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 16 } },
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Issued Date'),
+                  h('input', {
+                    className: 'form-input',
+                    type: 'date',
+                    value: formData.issued_date || new Date().toISOString().split('T')[0],
+                    onChange: e => setFormData({ ...formData, issued_date: e.target.value })
+                  })
+                ),
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Due Date'),
+                  h('input', {
+                    className: 'form-input',
+                    type: 'date',
+                    value: formData.due_date || '',
+                    onChange: e => setFormData({ ...formData, due_date: e.target.value })
+                  })
+                ),
+                h('div', { className: 'form-group' },
+                  h('label', null, 'Payment Status'),
+                  h('select', {
+                    className: 'form-select',
+                    value: formData.status || 'Pending',
+                    onChange: e => setFormData({ ...formData, status: e.target.value })
+                  },
+                    h('option', { value: 'Pending' }, 'Pending'),
+                    h('option', { value: 'Paid' }, 'Paid (Auto-decrements stock)'),
+                    h('option', { value: 'Overdue' }, 'Overdue')
+                  )
+                )
               ),
-              h('div', { className: 'form-group' },
-                h('label', null, 'Due Date'),
-                h('input', {
-                  className: 'form-input',
-                  type: 'date',
-                  value: formData.due_date || '',
-                  onChange: e => setFormData({ ...formData, due_date: e.target.value })
-                })
-              )
-            ),
-            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-              h('div', { className: 'form-group' },
-                h('label', null, 'Total Invoice Amount (₹)'),
-                h('input', {
-                  className: 'form-input',
-                  type: 'number',
-                  step: '0.01',
-                  placeholder: '0.00',
-                  required: true,
-                  value: formData.amount || '',
-                  onChange: e => setFormData({ ...formData, amount: e.target.value })
-                })
+
+              // Multi-Item Invoice Table
+              h('div', { style: { border: '1px solid var(--border-light)', borderRadius: 8, padding: 12, background: 'var(--bg-secondary)', marginBottom: 14 } },
+                h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 } },
+                  h('span', { style: { fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' } }, 'Line Items (Finished Goods)'),
+                  h('button', {
+                    type: 'button',
+                    className: 'btn btn-outline',
+                    style: { padding: '4px 10px', fontSize: 11.5 },
+                    onClick: addLine
+                  }, '+ Add Line Item')
+                ),
+                h('div', { className: 'table-responsive' },
+                  h('table', { style: { width: '100%', fontSize: 12, borderCollapse: 'collapse' } },
+                    h('thead', null,
+                      h('tr', { style: { borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)', textAlign: 'left' } },
+                        h('th', { style: { padding: '6px 8px' } }, 'Product / Finished Good'),
+                        h('th', { style: { padding: '6px 8px', width: 85 } }, 'Qty'),
+                        h('th', { style: { padding: '6px 8px', width: 115 } }, 'Unit Rate (₹)'),
+                        h('th', { style: { padding: '6px 8px', width: 115, textAlign: 'right' } }, 'Total (₹)'),
+                        h('th', { style: { padding: '6px 8px', width: 36, textAlign: 'center' } }, '')
+                      )
+                    ),
+                    h('tbody', null,
+                      items.map((line, idx) =>
+                        h('tr', { key: idx, style: { borderBottom: '1px solid var(--border-light)' } },
+                          h('td', { style: { padding: '6px 8px' } },
+                            h('select', {
+                              className: 'form-select',
+                              style: { fontSize: 12, padding: '4px 8px' },
+                              value: line.product_id || '',
+                              onChange: e => updateLine(idx, 'product_id', e.target.value)
+                            },
+                              h('option', { value: '' }, '-- Select finished good --'),
+                              finishedGoods.map(g =>
+                                h('option', { key: g.id, value: g.id }, `${g.item_name || g.name} (Stock: ${g.quantity || 0}, ₹${g.unit_price || g.unit_cost || 0})`)
+                              )
+                            )
+                          ),
+                          h('td', { style: { padding: '6px 8px' } },
+                            h('input', {
+                              type: 'number',
+                              min: '1',
+                              className: 'form-input',
+                              style: { fontSize: 12, padding: '4px 8px' },
+                              value: line.quantity || 1,
+                              onChange: e => updateLine(idx, 'quantity', e.target.value)
+                            })
+                          ),
+                          h('td', { style: { padding: '6px 8px' } },
+                            h('input', {
+                              type: 'number',
+                              step: '0.01',
+                              className: 'form-input',
+                              style: { fontSize: 12, padding: '4px 8px' },
+                              value: line.unit_price || '',
+                              onChange: e => updateLine(idx, 'unit_price', e.target.value)
+                            })
+                          ),
+                          h('td', { style: { padding: '6px 8px', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono)' } },
+                            formatCurrency(line.line_total || 0)
+                          ),
+                          h('td', { style: { padding: '6px 8px', textAlign: 'center' } },
+                            items.length > 1 && h('button', {
+                              type: 'button',
+                              style: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 },
+                              onClick: () => removeLine(idx),
+                              title: 'Remove item'
+                            }, '✕')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
               ),
-              h('div', { className: 'form-group' },
-                h('label', null, 'Payment Status'),
-                h('select', {
-                  className: 'form-select',
-                  value: formData.status || 'Pending',
-                  onChange: e => setFormData({ ...formData, status: e.target.value })
-                },
-                  h('option', { value: 'Paid' }, 'Paid'),
-                  h('option', { value: 'Pending' }, 'Pending'),
-                  h('option', { value: 'Overdue' }, 'Overdue')
+
+              // Tax & Grand Total Breakdown
+              h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', background: 'var(--bg-card)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-light)' } },
+                h('div', { style: { maxWidth: '50%' } },
+                  h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, color: '#16a34a', fontSize: 12, fontWeight: 600 } },
+                    h(Icon, { name: 'checkCircle', size: 14 }),
+                    'Stock Decrement on Payment'
+                  ),
+                  h('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginTop: 4 } },
+                    'When status is set to "Paid", ForgeLedger automatically decrements finished goods stock for each product line in this sale.'
+                  )
+                ),
+                h('div', { style: { width: '42%', textAlign: 'right', fontSize: 12 } },
+                  h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                    h('span', { style: { color: 'var(--text-muted)' } }, 'Subtotal:'),
+                    h('span', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600 } }, formatCurrency(subtotal))
+                  ),
+                  h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                    h('span', { style: { color: 'var(--text-muted)' } }, 'CGST (9%):'),
+                    h('span', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(cgst))
+                  ),
+                  h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4 } },
+                    h('span', { style: { color: 'var(--text-muted)' } }, 'SGST (9%):'),
+                    h('span', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(sgst))
+                  ),
+                  h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 6, borderBottom: '1px solid var(--border-light)', paddingBottom: 4 } },
+                    h('span', { style: { color: 'var(--text-muted)' } }, 'Total GST (18%):'),
+                    h('span', { style: { fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' } }, formatCurrency(totalGst))
+                  ),
+                  h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800 } },
+                    h('span', null, 'Grand Total:'),
+                    h('span', { style: { color: '#2563eb', fontFamily: 'var(--font-mono)' } }, formatCurrency(grandTotal))
+                  )
                 )
               )
+            ),
+            h('div', { className: 'modal-footer' },
+              h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Cancel'),
+              h('button', { type: 'submit', className: 'btn btn-primary' }, formData.id ? 'Update Invoice' : 'Save Multi-Item Invoice')
             )
-          ),
-          h('div', { className: 'modal-footer' },
-            h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Cancel'),
-            h('button', { type: 'submit', className: 'btn btn-primary' }, formData.id ? 'Update Invoice' : 'Save Invoice')
           )
         )
-      )
-    ),
+      );
+    })(),
 
     modalType === 'expense' && h('div', { className: 'modal-overlay' },
       h('div', { className: 'modal-card' },
@@ -3894,7 +4419,7 @@ function App() {
               className: 'btn btn-primary',
               style: { padding: '6px 14px', fontSize: 13 },
               onClick: () => window.print()
-            }, h(Icon, { name: 'download', size: 14 }), 'Print / Save PDF'),
+            }, h(Icon, { name: 'download', size: 14 }), 'Download PDF / Print'),
             h('button', { className: 'modal-close', onClick: () => setModalType(null) }, '✕')
           )
         ),
@@ -3957,11 +4482,26 @@ function App() {
 
           // Table of Tax Invoice Line Items
           (() => {
+            const rawItems = selectedInvoice.items;
+            const items = (() => {
+              if (Array.isArray(rawItems) && rawItems.length > 0) return rawItems;
+              if (typeof rawItems === 'string') {
+                try {
+                  const p = JSON.parse(rawItems);
+                  if (Array.isArray(p) && p.length > 0) return p;
+                } catch (_) {}
+              }
+              return null;
+            })();
+
             const totalAmt = Number(selectedInvoice.amount) || 0;
-            const taxable = Math.round((totalAmt / 1.18) * 100) / 100;
-            const totalGst = totalAmt - taxable;
+            const taxable = items ?
+              items.reduce((sum, it) => sum + (Number(it.line_total) || ((Number(it.quantity) || 1) * (Number(it.unit_price) || 0))), 0) :
+              Math.round((totalAmt / 1.18) * 100) / 100;
+            const totalGst = Math.round(taxable * 0.18 * 100) / 100;
             const cgst = Math.round((totalGst / 2) * 100) / 100;
             const sgst = Math.round((totalGst - cgst) * 100) / 100;
+            const finalTotal = totalAmt > 0 ? totalAmt : Math.round((taxable + totalGst) * 100) / 100;
 
             return h('div', null,
               h('table', { style: { width: '100%', borderCollapse: 'collapse', marginBottom: 20, fontSize: 12 } },
@@ -3977,18 +4517,37 @@ function App() {
                   )
                 ),
                 h('tbody', null,
-                  h('tr', { style: { borderBottom: '1px solid #e2e8f0' } },
-                    h('td', { style: { padding: '12px 10px', color: '#64748b' } }, '1'),
-                    h('td', { style: { padding: '12px 10px', fontWeight: 600, color: '#0f172a' } },
-                      selectedInvoice.product_name || 'Industrial Fabricated Output - Batch Delivery',
-                      h('div', { style: { fontSize: 11, color: '#64748b', fontWeight: 400, marginTop: 2 } }, 'Precision machined engineering components per specification')
-                    ),
-                    h('td', { style: { padding: '12px 10px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' } }, '848340'),
-                    h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace' } }, `${selectedInvoice.quantity || 1} units`),
-                    h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(taxable / (selectedInvoice.quantity || 1))),
-                    h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 } }, formatCurrency(taxable)),
-                    h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 } }, formatCurrency(totalAmt))
-                  )
+                  items ?
+                    items.map((it, idx) => {
+                      const qty = Number(it.quantity) || 1;
+                      const rate = Number(it.unit_price) || 0;
+                      const lineTaxable = Number(it.line_total) || (qty * rate);
+                      const lineTotal = Math.round(lineTaxable * 1.18 * 100) / 100;
+                      return h('tr', { key: idx, style: { borderBottom: '1px solid #e2e8f0' } },
+                        h('td', { style: { padding: '10px 10px', color: '#64748b' } }, String(idx + 1)),
+                        h('td', { style: { padding: '10px 10px', fontWeight: 600, color: '#0f172a' } },
+                          it.product_name || 'Finished Product Delivery',
+                          h('div', { style: { fontSize: 11, color: '#64748b', fontWeight: 400, marginTop: 2 } }, 'Precision manufactured output per specification')
+                        ),
+                        h('td', { style: { padding: '10px 10px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' } }, it.hsn || '848340'),
+                        h('td', { style: { padding: '10px 10px', textAlign: 'right', fontFamily: 'monospace' } }, `${qty} units`),
+                        h('td', { style: { padding: '10px 10px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(rate)),
+                        h('td', { style: { padding: '10px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 } }, formatCurrency(lineTaxable)),
+                        h('td', { style: { padding: '10px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 } }, formatCurrency(lineTotal))
+                      );
+                    }) :
+                    h('tr', { style: { borderBottom: '1px solid #e2e8f0' } },
+                      h('td', { style: { padding: '12px 10px', color: '#64748b' } }, '1'),
+                      h('td', { style: { padding: '12px 10px', fontWeight: 600, color: '#0f172a' } },
+                        selectedInvoice.product_name || 'Industrial Fabricated Output - Batch Delivery',
+                        h('div', { style: { fontSize: 11, color: '#64748b', fontWeight: 400, marginTop: 2 } }, 'Precision machined engineering components per specification')
+                      ),
+                      h('td', { style: { padding: '12px 10px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' } }, '848340'),
+                      h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace' } }, `${selectedInvoice.quantity || 1} units`),
+                      h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace' } }, formatCurrency(taxable / (selectedInvoice.quantity || 1))),
+                      h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 } }, formatCurrency(taxable)),
+                      h('td', { style: { padding: '12px 10px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 } }, formatCurrency(totalAmt))
+                    )
                 )
               ),
 
@@ -4025,7 +4584,7 @@ function App() {
                       ),
                       h('tr', { style: { borderTop: '2px solid #0f172a' } },
                         h('td', { style: { padding: '10px 0', fontWeight: 800, fontSize: 14 } }, 'Total Invoice Value'),
-                        h('td', { style: { padding: '10px 0', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#0f172a' } }, formatCurrency(totalAmt))
+                        h('td', { style: { padding: '10px 0', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#0f172a' } }, formatCurrency(finalTotal))
                       )
                     )
                   )

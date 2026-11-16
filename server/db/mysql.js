@@ -78,6 +78,20 @@ async function initDatabase(force = false) {
       console.log(`[MySQL] Database '${dbName}' tables verified and ready.`);
     }
 
+    // Ensure items column exists on sales table
+    try {
+      const [colItems] = await p.query(
+        `SELECT COUNT(*) AS cnt FROM information_schema.columns WHERE table_schema = ? AND table_name = 'sales' AND column_name = 'items'`,
+        [dbName]
+      );
+      if (colItems[0] && Number(colItems[0].cnt) === 0) {
+        await p.query(`ALTER TABLE sales ADD COLUMN items LONGTEXT NULL;`);
+        console.log(`[MySQL Migration] Added items column on 'sales'.`);
+      }
+    } catch (itemsErr) {
+      console.warn('[MySQL Migration Notice for sales.items]:', itemsErr.message);
+    }
+
     // Ensure company_id exists on all tenant tables and backfill if needed
     const tenantTables = ['inventory', 'sales', 'expenses', 'employees', 'production_runs'];
     for (const tbl of tenantTables) {

@@ -642,28 +642,37 @@ class DatabaseManager {
   // --- Sales ---
   async getSales(userId, companyId) {
     const compId = await this.resolveCompanyId(userId, companyId);
+    let rows = [];
     if (this.useMySQL) {
-      return await mysql.query(
+      rows = await mysql.query(
         'SELECT * FROM sales WHERE user_id = ? AND (company_id = ? OR (company_id IS NULL AND ? = (SELECT company_id FROM users WHERE id = ?))) ORDER BY issued_date DESC, id DESC',
         [Number(userId), Number(compId), Number(compId), Number(userId)]
       );
+    } else {
+      rows = this.data.sales
+        .filter(s => Number(s.user_id) === Number(userId) && (Number(s.company_id) === Number(compId) || (!s.company_id && Number(compId) === 1)))
+        .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date));
     }
-    return this.data.sales
-      .filter(s => Number(s.user_id) === Number(userId) && (Number(s.company_id) === Number(compId) || (!s.company_id && Number(compId) === 1)))
-      .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date));
+    return rows.map(s => {
+      if (s.items && typeof s.items === 'string') {
+        try { s.items = JSON.parse(s.items); } catch (_) {}
+      }
+      return s;
+    });
   }
 
   async createSale(userId, companyIdOrData, dataArg) {
     const compId = dataArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrData) : await this.resolveCompanyId(userId, null);
     const data = dataArg !== undefined ? dataArg : companyIdOrData;
-    const { invoice_no, customer, issued_date, due_date, amount, status } = data;
+    const { invoice_no, customer, issued_date, due_date, amount, status, items } = data;
 
     if (!customer || !customer.trim()) throw new Error('Customer name is required');
     const invNo = invoice_no && invoice_no.trim() ? invoice_no.trim() : `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+    const itemsJson = items && Array.isArray(items) ? JSON.stringify(items) : (typeof items === 'string' ? items : null);
 
     if (this.useMySQL) {
       const res = await mysql.query(
-        'INSERT INTO sales (user_id, company_id, invoice_no, customer, issued_date, due_date, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO sales (user_id, company_id, invoice_no, customer, issued_date, due_date, amount, status, items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           Number(userId),
           Number(compId),
@@ -672,14 +681,41 @@ class DatabaseManager {
           issued_date || new Date().toISOString().split('T')[0],
           due_date || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
           Number(amount) || 0,
-          status || 'Pending'
+          status || 'Pending',
+          itemsJson
         ]
       );
+
+      // Automatic Stock Decrement on Payment
+      if ((status || '').toLowerCase() === 'paid' && items && Array.isArray(items)) {
+        for (const item of items) {
+          const qty = Number(item.quantity) || 0;
+          if (qty > 0) {
+            if (item.product_id) {
+              await mysql.query(
+                'UPDATE inventory SET quantity = GREATEST(0, quantity - ?) WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
+                [qty, Number(item.product_id), Number(userId), Number(compId)]
+              );
+            } else if (item.product_name) {
+              await mysql.query(
+                'UPDATE inventory SET quantity = GREATEST(0, quantity - ?) WHERE item_name = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
+                [qty, item.product_name, Number(userId), Number(compId)]
+              );
+            }
+          }
+        }
+      }
+
       const rows = await mysql.query('SELECT * FROM sales WHERE id = ?', [res.insertId]);
-      return rows[0];
+      const created = rows[0];
+      if (created && created.items && typeof created.items === 'string') {
+        try { created.items = JSON.parse(created.items); } catch (_) {}
+      }
+      return created;
     }
 
     const id = this.nextId('sales');
+    const parsedItems = items && Array.isArray(items) ? items : (itemsJson ? JSON.parse(itemsJson) : null);
     const newSale = {
       id,
       user_id: Number(userId),
@@ -690,10 +726,29 @@ class DatabaseManager {
       due_date: due_date || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
       amount: Number(amount) || 0,
       status: status || 'Pending',
+      items: parsedItems,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
     this.data.sales.unshift(newSale);
+
+    // Fallback storage: Automatic Stock Decrement on Payment
+    if ((status || '').toLowerCase() === 'paid' && parsedItems && Array.isArray(parsedItems)) {
+      for (const item of parsedItems) {
+        const qty = Number(item.quantity) || 0;
+        if (qty > 0) {
+          const invItem = this.data.inventory.find(i => 
+            (item.product_id && Number(i.id) === Number(item.product_id)) ||
+            (item.product_name && i.item_name === item.product_name)
+          );
+          if (invItem) {
+            invItem.quantity = Math.max(0, (Number(invItem.quantity) || 0) - qty);
+            invItem.updated_at = new Date().toISOString();
+          }
+        }
+      }
+    }
+
     this.saveJson();
     return newSale;
   }
@@ -703,27 +758,90 @@ class DatabaseManager {
     const saleId = updatesArg !== undefined ? saleIdOrUpdates : companyIdOrSaleId;
     const updates = updatesArg !== undefined ? updatesArg : saleIdOrUpdates;
 
+    let prevSale = null;
+    if (this.useMySQL) {
+      const prevRows = await mysql.query('SELECT * FROM sales WHERE id = ?', [Number(saleId)]);
+      prevSale = prevRows[0];
+    } else {
+      prevSale = this.data.sales.find(s => s.id === Number(saleId));
+    }
+
+    const itemsJson = updates.items !== undefined ? (Array.isArray(updates.items) ? JSON.stringify(updates.items) : updates.items) : null;
+
     if (this.useMySQL) {
       await mysql.query(
-        'UPDATE sales SET customer = COALESCE(?, customer), issued_date = COALESCE(?, issued_date), due_date = COALESCE(?, due_date), amount = COALESCE(?, amount), status = COALESCE(?, status) WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
+        'UPDATE sales SET customer = COALESCE(?, customer), issued_date = COALESCE(?, issued_date), due_date = COALESCE(?, due_date), amount = COALESCE(?, amount), status = COALESCE(?, status), items = COALESCE(?, items) WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
         [
           updates.customer || null,
           updates.issued_date || null,
           updates.due_date || null,
           updates.amount !== undefined ? Number(updates.amount) : null,
           updates.status || null,
+          itemsJson,
           Number(saleId),
           Number(userId),
           Number(compId)
         ]
       );
+
+      // Decrement stock if status changed to Paid!
+      if (prevSale && (prevSale.status || '').toLowerCase() !== 'paid' && (updates.status || '').toLowerCase() === 'paid') {
+        let saleItems = [];
+        try {
+          saleItems = updates.items || (prevSale.items ? JSON.parse(prevSale.items) : []);
+        } catch (_) {}
+        if (Array.isArray(saleItems)) {
+          for (const item of saleItems) {
+            const qty = Number(item.quantity) || 0;
+            if (qty > 0) {
+              if (item.product_id) {
+                await mysql.query(
+                  'UPDATE inventory SET quantity = GREATEST(0, quantity - ?) WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
+                  [qty, Number(item.product_id), Number(userId), Number(compId)]
+                );
+              } else if (item.product_name) {
+                await mysql.query(
+                  'UPDATE inventory SET quantity = GREATEST(0, quantity - ?) WHERE item_name = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
+                  [qty, item.product_name, Number(userId), Number(compId)]
+                );
+              }
+            }
+          }
+        }
+      }
+
       const rows = await mysql.query('SELECT * FROM sales WHERE id = ?', [Number(saleId)]);
-      return rows[0];
+      const updated = rows[0];
+      if (updated && updated.items && typeof updated.items === 'string') {
+        try { updated.items = JSON.parse(updated.items); } catch (_) {}
+      }
+      return updated;
     }
 
     const idx = this.data.sales.findIndex(s => s.id === Number(saleId) && s.user_id === Number(userId) && (Number(s.company_id) === Number(compId) || !s.company_id));
     if (idx === -1) throw new Error('Sale not found');
+    const oldStatus = (this.data.sales[idx].status || '').toLowerCase();
     this.data.sales[idx] = { ...this.data.sales[idx], ...updates, updated_at: new Date().toISOString() };
+
+    if (oldStatus !== 'paid' && (updates.status || '').toLowerCase() === 'paid') {
+      const saleItems = updates.items || this.data.sales[idx].items || [];
+      if (Array.isArray(saleItems)) {
+        for (const item of saleItems) {
+          const qty = Number(item.quantity) || 0;
+          if (qty > 0) {
+            const invItem = this.data.inventory.find(i => 
+              (item.product_id && Number(i.id) === Number(item.product_id)) ||
+              (item.product_name && i.item_name === item.product_name)
+            );
+            if (invItem) {
+              invItem.quantity = Math.max(0, (Number(invItem.quantity) || 0) - qty);
+              invItem.updated_at = new Date().toISOString();
+            }
+          }
+        }
+      }
+    }
+
     this.saveJson();
     return this.data.sales[idx];
   }
