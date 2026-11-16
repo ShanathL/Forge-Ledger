@@ -1,0 +1,2 @@
+# ForgeLedger Build Manifest
+Initialized at D:\Forge Ledger on 2026-11-16

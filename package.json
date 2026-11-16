@@ -1,0 +1,37 @@
+{
+  "name": "forgeledger",
+  "version": "2.0.0",
+  "description": "ForgeLedger - Integrated Manufacturing Workspace for Small Manufacturers (MySQL & Express & React)",
+  "main": "server/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node server/server.js",
+    "seed": "node server/seed.js",
+    "setup": "npm install && node server/seed.js"
+  },
+  "keywords": [
+    "manufacturing",
+    "inventory",
+    "sales",
+    "invoices",
+    "gst",
+    "production",
+    "payroll",
+    "raw-materials",
+    "mysql",
+    "mariadb",
+    "forgeledger"
+  ],
+  "author": "Lanka Shanath",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.9.7"
+  }
+}
