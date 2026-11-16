@@ -15,7 +15,7 @@ git add .
 
 echo.
 echo Committing fixes...
-git commit -m "Enlarge inventory pie chart to 230px, add raw materials stock valuation pie chart"
+git commit -m "Add official ForgeLedger logo and icon, enlarge inventory pie chart, add raw materials valuation pie chart"
 
 echo.
 echo Pushing to GitHub (origin main)...

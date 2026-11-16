@@ -1005,7 +1005,7 @@ function App() {
   if (loading) {
     return h('div', { style: { display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0b1329', color: '#fff', fontFamily: 'var(--font-sans)' } },
       h('div', { style: { textAlign: 'center' } },
-        h('div', { className: 'brand-icon', style: { width: 48, height: 48, margin: '0 auto 16px', fontSize: 24 } }, 'F'),
+        h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', style: { width: 56, height: 56, borderRadius: 12, margin: '0 auto 16px', display: 'block', boxShadow: '0 4px 16px rgba(37,99,235,0.35)' } }),
         h('div', { style: { fontSize: 22, fontWeight: 800, marginBottom: 8, color: '#3b82f6' } }, 'ForgeLedger'),
         h('div', { style: { fontSize: 13, color: '#94a3b8' } }, 'Connecting to workspace...')
       )
@@ -1017,7 +1017,7 @@ function App() {
     return h('div', { className: 'modal-overlay', style: { background: '#0b1329' } },
       h('div', { className: 'modal-card', style: { maxWidth: 410 } },
         h('div', { style: { padding: '28px 24px 18px', textAlign: 'center' } },
-          h('div', { className: 'brand-icon', style: { width: 44, height: 44, margin: '0 auto 12px' } }, 'F'),
+          h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', style: { width: 54, height: 54, borderRadius: 12, margin: '0 auto 14px', display: 'block', boxShadow: '0 4px 16px rgba(37,99,235,0.35)' } }),
           h('h2', { style: { fontSize: 21, fontWeight: 800, color: '#0f172a' } }, 'ForgeLedger'),
           h('p', { style: { fontSize: 13, color: '#64748b', marginTop: 3 } }, 'Integrated Manufacturing Workspace')
         ),
@@ -1134,7 +1134,7 @@ function App() {
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
           // Logo moved to top left
           h('div', { className: 'top-nav-brand' },
-            h('div', { className: 'brand-icon' }, 'F'),
+            h('img', { src: '/logo.png', alt: 'ForgeLedger Logo', className: 'brand-logo-img' }),
             h('div', { className: 'brand-text' },
               h('h1', null, 'forgeledger'),
               h('span', null, 'BUSINESS WORKSPACE')
