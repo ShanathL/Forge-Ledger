@@ -7,7 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 // GET /api/expenses
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const expenses = await db.getExpenses(req.user.id);
+    const expenses = await db.getExpenses(req.user.id, req.user.company_id);
     res.json({ success: true, data: expenses });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -18,7 +18,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const { description, category, expense_date, payment_method, amount } = req.body;
-    const expense = await db.createExpense(req.user.id, {
+    const expense = await db.createExpense(req.user.id, req.user.company_id, {
       description,
       category,
       expense_date,
@@ -34,7 +34,7 @@ router.post('/', requireAuth, async (req, res) => {
 // DELETE /api/expenses/:id
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
-    await db.deleteExpense(req.user.id, req.params.id);
+    await db.deleteExpense(req.user.id, req.user.company_id, req.params.id);
     res.json({ success: true, message: 'Expense deleted' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });

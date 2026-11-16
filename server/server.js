@@ -20,6 +20,7 @@ const productionRoutes = require('./routes/production');
 const rawMaterialRoutes = require('./routes/rawMaterials');
 const reportRoutes = require('./routes/reports');
 const settingsRoutes = require('./routes/settings');
+const companyRoutes = require('./routes/companies');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -67,6 +68,7 @@ app.use('/api/production', productionRoutes);
 app.use('/api/raw-materials', rawMaterialRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/companies', companyRoutes);
 
 // SPA client fallback
 app.get('*', (req, res) => {

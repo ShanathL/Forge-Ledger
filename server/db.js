@@ -339,11 +339,102 @@ class DatabaseManager {
   }
 
   async getCompanyById(companyId) {
+    if (!companyId) return null;
     if (this.useMySQL) {
       const rows = await mysql.query('SELECT * FROM companies WHERE id = ?', [Number(companyId)]);
       return rows[0] || null;
     }
     return this.data.companies.find(c => c.id === Number(companyId)) || null;
+  }
+
+  async getUserCompanies(userId) {
+    if (this.useMySQL) {
+      return await mysql.query('SELECT * FROM companies WHERE owner_user_id = ? ORDER BY id ASC', [Number(userId)]);
+    }
+    return this.data.companies.filter(c => Number(c.owner_user_id) === Number(userId));
+  }
+
+  async getUserCompanyCount(userId) {
+    if (this.useMySQL) {
+      const rows = await mysql.query('SELECT COUNT(*) AS cnt FROM companies WHERE owner_user_id = ?', [Number(userId)]);
+      return Number(rows[0]?.cnt || 0);
+    }
+    return this.data.companies.filter(c => Number(c.owner_user_id) === Number(userId)).length;
+  }
+
+  async createCompanyForUser(userId, { name, legal_name, registration_no, gst_no, email, phone, address, city, state, country }) {
+    const count = await this.getUserCompanyCount(userId);
+    if (count >= 3) {
+      const err = new Error('A single user can manage a maximum of 3 companies.');
+      err.status = 400;
+      throw err;
+    }
+
+    const companyName = (name || `Company ${count + 1}`).trim();
+    if (this.useMySQL) {
+      const res = await mysql.query(
+        'INSERT INTO companies (owner_user_id, name, legal_name, registration_no, gst_no, email, phone, address, city, state, country) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          Number(userId),
+          companyName,
+          (legal_name || companyName).trim(),
+          (registration_no || '').trim(),
+          (gst_no || '').trim(),
+          (email || '').trim(),
+          (phone || '').trim(),
+          (address || '').trim(),
+          (city || '').trim(),
+          (state || '').trim(),
+          country || 'India'
+        ]
+      );
+      const newCompanyId = res.insertId;
+      await this.switchActiveCompany(userId, newCompanyId);
+      return await this.getCompanyById(newCompanyId);
+    }
+
+    const newCompanyId = this.nextId('company');
+    const newCompany = {
+      id: newCompanyId,
+      owner_user_id: Number(userId),
+      name: companyName,
+      legal_name: (legal_name || companyName).trim(),
+      registration_no: (registration_no || '').trim(),
+      gst_no: (gst_no || '').trim(),
+      email: (email || '').trim(),
+      phone: (phone || '').trim(),
+      address: (address || '').trim(),
+      city: (city || '').trim(),
+      state: (state || '').trim(),
+      country: country || 'India',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    this.data.companies.push(newCompany);
+    await this.switchActiveCompany(userId, newCompanyId);
+    this.saveJson();
+    return newCompany;
+  }
+
+  async switchActiveCompany(userId, companyId) {
+    const comp = await this.getCompanyById(companyId);
+    if (!comp || Number(comp.owner_user_id) !== Number(userId)) {
+      const err = new Error('Access denied to this company.');
+      err.status = 403;
+      throw err;
+    }
+
+    if (this.useMySQL) {
+      await mysql.query('UPDATE users SET company_id = ? WHERE id = ?', [Number(companyId), Number(userId)]);
+      return comp;
+    }
+
+    const user = this.data.users.find(u => Number(u.id) === Number(userId));
+    if (user) {
+      user.company_id = Number(companyId);
+      this.saveJson();
+    }
+    return comp;
   }
 
   async updateCompany(companyId, updates) {
@@ -389,11 +480,28 @@ class DatabaseManager {
     return this.data.companies[idx];
   }
 
+  // Helper to extract active company id
+  async resolveCompanyId(userId, companyId) {
+    if (companyId) return Number(companyId);
+    const user = await this.findUserById(userId);
+    return user ? Number(user.company_id) : 1;
+  }
+
   // --- Inventory ---
-  async getInventory(userId, filter = {}) {
+  async getInventory(userId, companyIdOrFilter, filterArg = {}) {
+    let companyId = null;
+    let filter = {};
+    if (typeof companyIdOrFilter === 'object' && companyIdOrFilter !== null) {
+      filter = companyIdOrFilter;
+      companyId = await this.resolveCompanyId(userId, null);
+    } else {
+      companyId = await this.resolveCompanyId(userId, companyIdOrFilter);
+      filter = filterArg || {};
+    }
+
     if (this.useMySQL) {
-      let sql = 'SELECT * FROM inventory WHERE user_id = ?';
-      const params = [Number(userId)];
+      let sql = 'SELECT * FROM inventory WHERE user_id = ? AND (company_id = ? OR (company_id IS NULL AND ? = (SELECT company_id FROM users WHERE id = ?)))';
+      const params = [Number(userId), Number(companyId), Number(companyId), Number(userId)];
       if (filter.category) {
         sql += ' AND category = ?';
         params.push(filter.category);
@@ -405,7 +513,7 @@ class DatabaseManager {
       return await mysql.query(sql, params);
     }
 
-    let items = this.data.inventory.filter(i => i.user_id === Number(userId));
+    let items = this.data.inventory.filter(i => Number(i.user_id) === Number(userId) && (Number(i.company_id) === Number(companyId) || (!i.company_id && Number(companyId) === 1)));
     if (filter.category) {
       items = items.filter(i => i.category.toLowerCase() === filter.category.toLowerCase());
     }
@@ -419,15 +527,27 @@ class DatabaseManager {
     return items.sort((a, b) => b.id - a.id);
   }
 
-  async createInventoryItem(userId, { item_name, sku, category, quantity, unit, unit_cost, reorder_level }) {
+  async createInventoryItem(userId, companyIdOrData, dataArg) {
+    let companyId = null;
+    let data = {};
+    if (dataArg !== undefined) {
+      companyId = await this.resolveCompanyId(userId, companyIdOrData);
+      data = dataArg;
+    } else {
+      data = companyIdOrData || {};
+      companyId = await this.resolveCompanyId(userId, data.company_id);
+    }
+
+    const { item_name, sku, category, quantity, unit, unit_cost, reorder_level } = data;
     if (!item_name || !item_name.trim()) throw new Error('Item name is required');
     const itemSku = sku && sku.trim() ? sku.trim() : `SKU-${Date.now().toString().slice(-6)}`;
 
     if (this.useMySQL) {
       const res = await mysql.query(
-        'INSERT INTO inventory (user_id, item_name, sku, category, quantity, unit, unit_cost, reorder_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO inventory (user_id, company_id, item_name, sku, category, quantity, unit, unit_cost, reorder_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           Number(userId),
+          Number(companyId),
           item_name.trim(),
           itemSku,
           category || 'General',
@@ -445,6 +565,7 @@ class DatabaseManager {
     const newItem = {
       id,
       user_id: Number(userId),
+      company_id: Number(companyId),
       item_name: item_name.trim(),
       sku: itemSku,
       category: category || 'General',
@@ -460,10 +581,23 @@ class DatabaseManager {
     return newItem;
   }
 
-  async updateInventoryItem(userId, itemId, updates) {
+  async updateInventoryItem(userId, companyIdOrItemId, itemIdOrUpdates, updatesArg) {
+    let companyId = null;
+    let itemId = null;
+    let updates = {};
+    if (updatesArg !== undefined) {
+      companyId = await this.resolveCompanyId(userId, companyIdOrItemId);
+      itemId = itemIdOrUpdates;
+      updates = updatesArg;
+    } else {
+      companyId = await this.resolveCompanyId(userId, null);
+      itemId = companyIdOrItemId;
+      updates = itemIdOrUpdates;
+    }
+
     if (this.useMySQL) {
       await mysql.query(
-        'UPDATE inventory SET item_name = COALESCE(?, item_name), sku = COALESCE(?, sku), category = COALESCE(?, category), quantity = COALESCE(?, quantity), unit = COALESCE(?, unit), unit_cost = COALESCE(?, unit_cost), reorder_level = COALESCE(?, reorder_level) WHERE id = ? AND user_id = ?',
+        'UPDATE inventory SET item_name = COALESCE(?, item_name), sku = COALESCE(?, sku), category = COALESCE(?, category), quantity = COALESCE(?, quantity), unit = COALESCE(?, unit), unit_cost = COALESCE(?, unit_cost), reorder_level = COALESCE(?, reorder_level) WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
         [
           updates.item_name || null,
           updates.sku || null,
@@ -473,14 +607,15 @@ class DatabaseManager {
           updates.unit_cost !== undefined ? Number(updates.unit_cost) : null,
           updates.reorder_level !== undefined ? Number(updates.reorder_level) : null,
           Number(itemId),
-          Number(userId)
+          Number(userId),
+          Number(companyId)
         ]
       );
       const rows = await mysql.query('SELECT * FROM inventory WHERE id = ?', [Number(itemId)]);
       return rows[0];
     }
 
-    const idx = this.data.inventory.findIndex(i => i.id === Number(itemId) && i.user_id === Number(userId));
+    const idx = this.data.inventory.findIndex(i => i.id === Number(itemId) && i.user_id === Number(userId) && (Number(i.company_id) === Number(companyId) || !i.company_id));
     if (idx === -1) throw new Error('Inventory item not found');
     this.data.inventory[idx] = {
       ...this.data.inventory[idx],
@@ -491,35 +626,47 @@ class DatabaseManager {
     return this.data.inventory[idx];
   }
 
-  async deleteInventoryItem(userId, itemId) {
+  async deleteInventoryItem(userId, companyIdOrItemId, itemIdArg) {
+    const companyId = itemIdArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrItemId) : await this.resolveCompanyId(userId, null);
+    const itemId = itemIdArg !== undefined ? itemIdArg : companyIdOrItemId;
+
     if (this.useMySQL) {
-      await mysql.query('DELETE FROM inventory WHERE id = ? AND user_id = ?', [Number(itemId), Number(userId)]);
+      await mysql.query('DELETE FROM inventory WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)', [Number(itemId), Number(userId), Number(companyId)]);
       return true;
     }
-    this.data.inventory = this.data.inventory.filter(i => !(i.id === Number(itemId) && i.user_id === Number(userId)));
+    this.data.inventory = this.data.inventory.filter(i => !(i.id === Number(itemId) && i.user_id === Number(userId) && (Number(i.company_id) === Number(companyId) || !i.company_id)));
     this.saveJson();
     return true;
   }
 
   // --- Sales ---
-  async getSales(userId) {
+  async getSales(userId, companyId) {
+    const compId = await this.resolveCompanyId(userId, companyId);
     if (this.useMySQL) {
-      return await mysql.query('SELECT * FROM sales WHERE user_id = ? ORDER BY issued_date DESC, id DESC', [Number(userId)]);
+      return await mysql.query(
+        'SELECT * FROM sales WHERE user_id = ? AND (company_id = ? OR (company_id IS NULL AND ? = (SELECT company_id FROM users WHERE id = ?))) ORDER BY issued_date DESC, id DESC',
+        [Number(userId), Number(compId), Number(compId), Number(userId)]
+      );
     }
     return this.data.sales
-      .filter(s => s.user_id === Number(userId))
+      .filter(s => Number(s.user_id) === Number(userId) && (Number(s.company_id) === Number(compId) || (!s.company_id && Number(compId) === 1)))
       .sort((a, b) => new Date(b.issued_date) - new Date(a.issued_date));
   }
 
-  async createSale(userId, { invoice_no, customer, issued_date, due_date, amount, status }) {
+  async createSale(userId, companyIdOrData, dataArg) {
+    const compId = dataArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrData) : await this.resolveCompanyId(userId, null);
+    const data = dataArg !== undefined ? dataArg : companyIdOrData;
+    const { invoice_no, customer, issued_date, due_date, amount, status } = data;
+
     if (!customer || !customer.trim()) throw new Error('Customer name is required');
     const invNo = invoice_no && invoice_no.trim() ? invoice_no.trim() : `INV-${Math.floor(1000 + Math.random() * 9000)}`;
 
     if (this.useMySQL) {
       const res = await mysql.query(
-        'INSERT INTO sales (user_id, invoice_no, customer, issued_date, due_date, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO sales (user_id, company_id, invoice_no, customer, issued_date, due_date, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [
           Number(userId),
+          Number(compId),
           invNo,
           customer.trim(),
           issued_date || new Date().toISOString().split('T')[0],
@@ -536,6 +683,7 @@ class DatabaseManager {
     const newSale = {
       id,
       user_id: Number(userId),
+      company_id: Number(compId),
       invoice_no: invNo,
       customer: customer.trim(),
       issued_date: issued_date || new Date().toISOString().split('T')[0],
@@ -550,10 +698,14 @@ class DatabaseManager {
     return newSale;
   }
 
-  async updateSale(userId, saleId, updates) {
+  async updateSale(userId, companyIdOrSaleId, saleIdOrUpdates, updatesArg) {
+    const compId = updatesArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrSaleId) : await this.resolveCompanyId(userId, null);
+    const saleId = updatesArg !== undefined ? saleIdOrUpdates : companyIdOrSaleId;
+    const updates = updatesArg !== undefined ? updatesArg : saleIdOrUpdates;
+
     if (this.useMySQL) {
       await mysql.query(
-        'UPDATE sales SET customer = COALESCE(?, customer), issued_date = COALESCE(?, issued_date), due_date = COALESCE(?, due_date), amount = COALESCE(?, amount), status = COALESCE(?, status) WHERE id = ? AND user_id = ?',
+        'UPDATE sales SET customer = COALESCE(?, customer), issued_date = COALESCE(?, issued_date), due_date = COALESCE(?, due_date), amount = COALESCE(?, amount), status = COALESCE(?, status) WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
         [
           updates.customer || null,
           updates.issued_date || null,
@@ -561,48 +713,61 @@ class DatabaseManager {
           updates.amount !== undefined ? Number(updates.amount) : null,
           updates.status || null,
           Number(saleId),
-          Number(userId)
+          Number(userId),
+          Number(compId)
         ]
       );
       const rows = await mysql.query('SELECT * FROM sales WHERE id = ?', [Number(saleId)]);
       return rows[0];
     }
 
-    const idx = this.data.sales.findIndex(s => s.id === Number(saleId) && s.user_id === Number(userId));
+    const idx = this.data.sales.findIndex(s => s.id === Number(saleId) && s.user_id === Number(userId) && (Number(s.company_id) === Number(compId) || !s.company_id));
     if (idx === -1) throw new Error('Sale not found');
     this.data.sales[idx] = { ...this.data.sales[idx], ...updates, updated_at: new Date().toISOString() };
     this.saveJson();
     return this.data.sales[idx];
   }
 
-  async deleteSale(userId, saleId) {
+  async deleteSale(userId, companyIdOrSaleId, saleIdArg) {
+    const compId = saleIdArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrSaleId) : await this.resolveCompanyId(userId, null);
+    const saleId = saleIdArg !== undefined ? saleIdArg : companyIdOrSaleId;
+
     if (this.useMySQL) {
-      await mysql.query('DELETE FROM sales WHERE id = ? AND user_id = ?', [Number(saleId), Number(userId)]);
+      await mysql.query('DELETE FROM sales WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)', [Number(saleId), Number(userId), Number(compId)]);
       return true;
     }
-    this.data.sales = this.data.sales.filter(s => !(s.id === Number(saleId) && s.user_id === Number(userId)));
+    this.data.sales = this.data.sales.filter(s => !(s.id === Number(saleId) && s.user_id === Number(userId) && (Number(s.company_id) === Number(compId) || !s.company_id)));
     this.saveJson();
     return true;
   }
 
   // --- Expenses ---
-  async getExpenses(userId) {
+  async getExpenses(userId, companyId) {
+    const compId = await this.resolveCompanyId(userId, companyId);
     if (this.useMySQL) {
-      return await mysql.query('SELECT * FROM expenses WHERE user_id = ? ORDER BY expense_date DESC, id DESC', [Number(userId)]);
+      return await mysql.query(
+        'SELECT * FROM expenses WHERE user_id = ? AND (company_id = ? OR (company_id IS NULL AND ? = (SELECT company_id FROM users WHERE id = ?))) ORDER BY expense_date DESC, id DESC',
+        [Number(userId), Number(compId), Number(compId), Number(userId)]
+      );
     }
     return this.data.expenses
-      .filter(e => e.user_id === Number(userId))
+      .filter(e => Number(e.user_id) === Number(userId) && (Number(e.company_id) === Number(compId) || (!e.company_id && Number(compId) === 1)))
       .sort((a, b) => new Date(b.expense_date) - new Date(a.expense_date));
   }
 
-  async createExpense(userId, { description, category, expense_date, payment_method, amount }) {
+  async createExpense(userId, companyIdOrData, dataArg) {
+    const compId = dataArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrData) : await this.resolveCompanyId(userId, null);
+    const data = dataArg !== undefined ? dataArg : companyIdOrData;
+    const { description, category, expense_date, payment_method, amount } = data;
+
     if (!description || !description.trim()) throw new Error('Description is required');
 
     if (this.useMySQL) {
       const res = await mysql.query(
-        'INSERT INTO expenses (user_id, description, category, expense_date, payment_method, amount) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO expenses (user_id, company_id, description, category, expense_date, payment_method, amount) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [
           Number(userId),
+          Number(compId),
           description.trim(),
           category || 'General',
           expense_date || new Date().toISOString().split('T')[0],
@@ -618,6 +783,7 @@ class DatabaseManager {
     const newExp = {
       id,
       user_id: Number(userId),
+      company_id: Number(compId),
       description: description.trim(),
       category: category || 'General',
       expense_date: expense_date || new Date().toISOString().split('T')[0],
@@ -631,31 +797,42 @@ class DatabaseManager {
     return newExp;
   }
 
-  async deleteExpense(userId, expenseId) {
+  async deleteExpense(userId, companyIdOrExpId, expIdArg) {
+    const compId = expIdArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrExpId) : await this.resolveCompanyId(userId, null);
+    const expenseId = expIdArg !== undefined ? expIdArg : companyIdOrExpId;
+
     if (this.useMySQL) {
-      await mysql.query('DELETE FROM expenses WHERE id = ? AND user_id = ?', [Number(expenseId), Number(userId)]);
+      await mysql.query('DELETE FROM expenses WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)', [Number(expenseId), Number(userId), Number(compId)]);
       return true;
     }
-    this.data.expenses = this.data.expenses.filter(e => !(e.id === Number(expenseId) && e.user_id === Number(userId)));
+    this.data.expenses = this.data.expenses.filter(e => !(e.id === Number(expenseId) && e.user_id === Number(userId) && (Number(e.company_id) === Number(compId) || !e.company_id)));
     this.saveJson();
     return true;
   }
 
   // --- Employees / Payroll ---
-  async getEmployees(userId) {
+  async getEmployees(userId, companyId) {
+    const compId = await this.resolveCompanyId(userId, companyId);
     if (this.useMySQL) {
-      return await mysql.query('SELECT * FROM employees WHERE user_id = ? ORDER BY id DESC', [Number(userId)]);
+      return await mysql.query(
+        'SELECT * FROM employees WHERE user_id = ? AND (company_id = ? OR (company_id IS NULL AND ? = (SELECT company_id FROM users WHERE id = ?))) ORDER BY id DESC',
+        [Number(userId), Number(compId), Number(compId), Number(userId)]
+      );
     }
-    return this.data.employees.filter(e => e.user_id === Number(userId));
+    return this.data.employees.filter(e => Number(e.user_id) === Number(userId) && (Number(e.company_id) === Number(compId) || (!e.company_id && Number(compId) === 1)));
   }
 
-  async createEmployee(userId, { name, role, monthly_salary, status }) {
+  async createEmployee(userId, companyIdOrData, dataArg) {
+    const compId = dataArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrData) : await this.resolveCompanyId(userId, null);
+    const data = dataArg !== undefined ? dataArg : companyIdOrData;
+    const { name, role, monthly_salary, status } = data;
+
     if (!name || !name.trim()) throw new Error('Employee name is required');
 
     if (this.useMySQL) {
       const res = await mysql.query(
-        'INSERT INTO employees (user_id, name, role, monthly_salary, status) VALUES (?, ?, ?, ?, ?)',
-        [Number(userId), name.trim(), role || 'Staff', Number(monthly_salary) || 0, status || 'Active']
+        'INSERT INTO employees (user_id, company_id, name, role, monthly_salary, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [Number(userId), Number(compId), name.trim(), role || 'Staff', Number(monthly_salary) || 0, status || 'Active']
       );
       const rows = await mysql.query('SELECT * FROM employees WHERE id = ?', [res.insertId]);
       return rows[0];
@@ -665,6 +842,7 @@ class DatabaseManager {
     const newEmp = {
       id,
       user_id: Number(userId),
+      company_id: Number(compId),
       name: name.trim(),
       role: role || 'Staff',
       monthly_salary: Number(monthly_salary) || 0,
@@ -677,58 +855,75 @@ class DatabaseManager {
     return newEmp;
   }
 
-  async updateEmployee(userId, employeeId, updates) {
+  async updateEmployee(userId, companyIdOrEmpId, empIdOrUpdates, updatesArg) {
+    const compId = updatesArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrEmpId) : await this.resolveCompanyId(userId, null);
+    const employeeId = updatesArg !== undefined ? empIdOrUpdates : companyIdOrEmpId;
+    const updates = updatesArg !== undefined ? updatesArg : empIdOrUpdates;
+
     if (this.useMySQL) {
       await mysql.query(
-        'UPDATE employees SET name = COALESCE(?, name), role = COALESCE(?, role), monthly_salary = COALESCE(?, monthly_salary), status = COALESCE(?, status) WHERE id = ? AND user_id = ?',
+        'UPDATE employees SET name = COALESCE(?, name), role = COALESCE(?, role), monthly_salary = COALESCE(?, monthly_salary), status = COALESCE(?, status) WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)',
         [
           updates.name || null,
           updates.role || null,
           updates.monthly_salary !== undefined ? Number(updates.monthly_salary) : null,
           updates.status || null,
           Number(employeeId),
-          Number(userId)
+          Number(userId),
+          Number(compId)
         ]
       );
       const rows = await mysql.query('SELECT * FROM employees WHERE id = ?', [Number(employeeId)]);
       return rows[0];
     }
 
-    const idx = this.data.employees.findIndex(e => e.id === Number(employeeId) && e.user_id === Number(userId));
+    const idx = this.data.employees.findIndex(e => e.id === Number(employeeId) && e.user_id === Number(userId) && (Number(e.company_id) === Number(compId) || !e.company_id));
     if (idx === -1) throw new Error('Employee not found');
     this.data.employees[idx] = { ...this.data.employees[idx], ...updates, updated_at: new Date().toISOString() };
     this.saveJson();
     return this.data.employees[idx];
   }
 
-  async deleteEmployee(userId, employeeId) {
+  async deleteEmployee(userId, companyIdOrEmpId, empIdArg) {
+    const compId = empIdArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrEmpId) : await this.resolveCompanyId(userId, null);
+    const employeeId = empIdArg !== undefined ? empIdArg : companyIdOrEmpId;
+
     if (this.useMySQL) {
-      await mysql.query('DELETE FROM employees WHERE id = ? AND user_id = ?', [Number(employeeId), Number(userId)]);
+      await mysql.query('DELETE FROM employees WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)', [Number(employeeId), Number(userId), Number(compId)]);
       return true;
     }
-    this.data.employees = this.data.employees.filter(e => !(e.id === Number(employeeId) && e.user_id === Number(userId)));
+    this.data.employees = this.data.employees.filter(e => !(e.id === Number(employeeId) && e.user_id === Number(userId) && (Number(e.company_id) === Number(compId) || !e.company_id)));
     this.saveJson();
     return true;
   }
 
   // --- Production Runs ---
-  async getProductionRuns(userId) {
+  async getProductionRuns(userId, companyId) {
+    const compId = await this.resolveCompanyId(userId, companyId);
     if (this.useMySQL) {
-      return await mysql.query('SELECT * FROM production_runs WHERE user_id = ? ORDER BY run_date DESC, id DESC', [Number(userId)]);
+      return await mysql.query(
+        'SELECT * FROM production_runs WHERE user_id = ? AND (company_id = ? OR (company_id IS NULL AND ? = (SELECT company_id FROM users WHERE id = ?))) ORDER BY run_date DESC, id DESC',
+        [Number(userId), Number(compId), Number(compId), Number(userId)]
+      );
     }
     return this.data.production_runs
-      .filter(p => p.user_id === Number(userId))
+      .filter(p => Number(p.user_id) === Number(userId) && (Number(p.company_id) === Number(compId) || (!p.company_id && Number(compId) === 1)))
       .sort((a, b) => new Date(b.run_date) - new Date(a.run_date));
   }
 
-  async createProductionRun(userId, { run_date, product, quantity, status }) {
+  async createProductionRun(userId, companyIdOrData, dataArg) {
+    const compId = dataArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrData) : await this.resolveCompanyId(userId, null);
+    const data = dataArg !== undefined ? dataArg : companyIdOrData;
+    const { run_date, product, quantity, status } = data;
+
     if (!product || !product.trim()) throw new Error('Product name is required');
 
     if (this.useMySQL) {
       const res = await mysql.query(
-        'INSERT INTO production_runs (user_id, run_date, product, quantity, status) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO production_runs (user_id, company_id, run_date, product, quantity, status) VALUES (?, ?, ?, ?, ?, ?)',
         [
           Number(userId),
+          Number(compId),
           run_date || new Date().toISOString().split('T')[0],
           product.trim(),
           Number(quantity) || 0,
@@ -743,6 +938,7 @@ class DatabaseManager {
     const newRun = {
       id,
       user_id: Number(userId),
+      company_id: Number(compId),
       run_date: run_date || new Date().toISOString().split('T')[0],
       product: product.trim(),
       quantity: Number(quantity) || 0,
@@ -754,14 +950,18 @@ class DatabaseManager {
     return newRun;
   }
 
-  async updateProductionRunStatus(userId, runId, status) {
+  async updateProductionRunStatus(userId, companyIdOrRunId, runIdOrStatus, statusArg) {
+    const compId = statusArg !== undefined ? await this.resolveCompanyId(userId, companyIdOrRunId) : await this.resolveCompanyId(userId, null);
+    const runId = statusArg !== undefined ? runIdOrStatus : companyIdOrRunId;
+    const status = statusArg !== undefined ? statusArg : runIdOrStatus;
+
     if (this.useMySQL) {
-      await mysql.query('UPDATE production_runs SET status = ? WHERE id = ? AND user_id = ?', [status, Number(runId), Number(userId)]);
+      await mysql.query('UPDATE production_runs SET status = ? WHERE id = ? AND user_id = ? AND (company_id = ? OR company_id IS NULL)', [status, Number(runId), Number(userId), Number(compId)]);
       const rows = await mysql.query('SELECT * FROM production_runs WHERE id = ?', [Number(runId)]);
       return rows[0];
     }
 
-    const idx = this.data.production_runs.findIndex(p => p.id === Number(runId) && p.user_id === Number(userId));
+    const idx = this.data.production_runs.findIndex(p => p.id === Number(runId) && p.user_id === Number(userId) && (Number(p.company_id) === Number(compId) || !p.company_id));
     if (idx === -1) throw new Error('Production run not found');
     this.data.production_runs[idx].status = status;
     this.saveJson();
@@ -769,11 +969,12 @@ class DatabaseManager {
   }
 
   // --- Dashboard Aggregates ---
-  async getDashboardSummary(userId) {
-    const sales = await this.getSales(userId);
-    const expenses = await this.getExpenses(userId);
-    const inventory = await this.getInventory(userId);
-    const employees = await this.getEmployees(userId);
+  async getDashboardSummary(userId, companyId) {
+    const compId = await this.resolveCompanyId(userId, companyId);
+    const sales = await this.getSales(userId, compId);
+    const expenses = await this.getExpenses(userId, compId);
+    const inventory = await this.getInventory(userId, compId);
+    const employees = await this.getEmployees(userId, compId);
 
     const totalSales = sales.reduce((sum, s) => sum + Number(s.amount), 0);
     const paidSales = sales.filter(s => s.status === 'Paid').reduce((sum, s) => sum + Number(s.amount), 0);
@@ -781,7 +982,7 @@ class DatabaseManager {
     const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
     const inventoryValue = inventory.reduce((sum, i) => sum + (Number(i.quantity) * Number(i.unit_cost)), 0);
-    const lowStockCount = inventory.filter(i => Number(i.quantity) <= Number(i.reorder_level)).length;
+    const lowStockCount = inventory.filter(i => Number(i.quantity) <= (Number(i.reorder_level) || 5)).length;
 
     const totalPayroll = employees
       .filter(e => e.status === 'Active')

@@ -78,6 +78,24 @@ async function initDatabase(force = false) {
       console.log(`[MySQL] Database '${dbName}' tables verified and ready.`);
     }
 
+    // Ensure company_id exists on all tenant tables and backfill if needed
+    const tenantTables = ['inventory', 'sales', 'expenses', 'employees', 'production_runs'];
+    for (const tbl of tenantTables) {
+      try {
+        const [col] = await p.query(
+          `SELECT COUNT(*) AS cnt FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'company_id'`,
+          [dbName, tbl]
+        );
+        if (col[0] && Number(col[0].cnt) === 0) {
+          await p.query(`ALTER TABLE \`${tbl}\` ADD COLUMN company_id INT UNSIGNED NULL;`);
+          await p.query(`UPDATE \`${tbl}\` SET company_id = (SELECT company_id FROM users WHERE users.id = \`${tbl}\`.user_id LIMIT 1) WHERE company_id IS NULL;`);
+          console.log(`[MySQL Migration] Added and backfilled company_id column on '${tbl}'.`);
+        }
+      } catch (colErr) {
+        console.warn(`[MySQL Migration Notice for ${tbl}]:`, colErr.message);
+      }
+    }
+
     isConnected = true;
     return true;
   } catch (err) {

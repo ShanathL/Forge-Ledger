@@ -1490,3 +1490,66 @@ body.dark-mode .filter-pill.active {
   border-color: #2563eb;
   color: #ffffff;
 }
+
+/* ---------------------------------
+   MULTI-COMPANY WORKSPACE STYLES
+-----------------------------------*/
+.company-count-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.22);
+  color: #93c5fd;
+  border: 1px solid rgba(37, 99, 235, 0.38);
+  margin-left: auto;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+.sidebar.collapsed .company-count-pill {
+  display: none;
+}
+
+.active-company-banner {
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+body.dark-mode .active-company-banner {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.company-card-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  transition: all 0.15s ease;
+}
+
+.company-card-item:hover {
+  border-color: var(--primary);
+}
+
+.company-card-item.active-company-card {
+  border: 2px solid #2563eb !important;
+  background: rgba(37, 99, 235, 0.06) !important;
+}
+
+body.dark-mode .company-card-item.active-company-card {
+  background: rgba(37, 99, 235, 0.16) !important;
+  border-color: #3b82f6 !important;
+}

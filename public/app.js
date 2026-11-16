@@ -262,6 +262,12 @@ function App() {
   const [productionRuns, setProductionRuns] = useState([]);
   const [reportsData, setReportsData] = useState(null);
   const [companySettings, setCompanySettings] = useState(null);
+  const [userCompanies, setUserCompanies] = useState([]);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [showNewCompanyForm, setShowNewCompanyForm] = useState(false);
+  const [newCompanyForm, setNewCompanyForm] = useState({ name: '', legal_name: '', gst_no: '', address: '' });
+  const [companyActionLoading, setCompanyActionLoading] = useState(false);
+  const [companyError, setCompanyError] = useState('');
 
   // Search Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -349,8 +355,10 @@ function App() {
       fetch('/api/employees').then(r => r.json()),
       fetch('/api/production').then(r => r.json()),
       fetch('/api/reports/monthly').then(r => r.json()),
-      fetch('/api/settings').then(r => r.json())
-    ]).then(([d, i, rm, s, e, emp, p, rep, set]) => {
+      fetch('/api/settings').then(r => r.json()),
+      fetch('/api/companies').then(r => r.json()),
+      fetch('/api/auth/me').then(r => r.json())
+    ]).then(([d, i, rm, s, e, emp, p, rep, set, comp, me]) => {
       if (d.success) setDashboard(d.data);
       if (i.success) setInventory(i.data);
       if (rm.success) setRawMaterials(rm.data);
@@ -360,6 +368,8 @@ function App() {
       if (p.success) setProductionRuns(p.data);
       if (rep.success) setReportsData(rep.data);
       if (set.success) setCompanySettings(set.data);
+      if (comp.success && comp.data) setUserCompanies(comp.data);
+      if (me.success && me.user) setCurrentUser(me.user);
       setLoading(false);
     }).catch(err => {
       console.error('Data load error:', err);
@@ -524,6 +534,62 @@ function App() {
       });
   }
 
+  function handleSwitchCompany(companyId) {
+    setCompanyActionLoading(true);
+    setCompanyError('');
+    fetch('/api/companies/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId })
+    })
+      .then(r => r.json())
+      .then(res => {
+        setCompanyActionLoading(false);
+        if (res.success) {
+          setShowCompanyModal(false);
+          setShowNewCompanyForm(false);
+          loadAllData();
+        } else {
+          setCompanyError(res.error || 'Failed to switch company');
+        }
+      })
+      .catch(err => {
+        setCompanyActionLoading(false);
+        setCompanyError(err.message);
+      });
+  }
+
+  function handleCreateCompany(e) {
+    e.preventDefault();
+    if (!newCompanyForm.name || !newCompanyForm.name.trim()) {
+      setCompanyError('Company name is required.');
+      return;
+    }
+    setCompanyActionLoading(true);
+    setCompanyError('');
+    fetch('/api/companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newCompanyForm)
+    })
+      .then(r => r.json())
+      .then(res => {
+        setCompanyActionLoading(false);
+        if (res.success) {
+          setNewCompanyForm({ name: '', legal_name: '', gst_no: '', address: '' });
+          setShowNewCompanyForm(false);
+          setShowCompanyModal(false);
+          loadAllData();
+        } else {
+          setCompanyError(res.error || 'Failed to create company');
+        }
+      })
+      .catch(err => {
+        setCompanyActionLoading(false);
+        setCompanyError(err.message);
+      });
+  }
+
   // Loading screen while checking session
   if (loading) {
     return h('div', { style: { display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0b1329', color: '#fff', fontFamily: 'var(--font-sans)' } },
@@ -614,17 +680,18 @@ function App() {
 
       // Sidebar Footer (Company above profile, then separate Account & Logout)
       h('div', { className: 'sidebar-footer' },
-        // 1. Company / Workspace Selector (Moved to bottom above profile)
+        // 1. Company / Workspace Selector (Click to switch company, max 3)
         h('div', {
           className: 'workspace-selector',
-          title: `Current workspace: ${currentUser?.company?.name || 'Riverton Works'}`,
-          onClick: () => { setActiveTab('settings'); }
+          title: `Current workspace: ${currentUser?.company?.name || 'Company Workspace'} (Click to switch company)`,
+          onClick: () => { setShowCompanyModal(true); setCompanyError(''); }
         },
-          h('div', { className: 'workspace-avatar' }, currentUser?.company?.name?.charAt(0) || 'R'),
+          h('div', { className: 'workspace-avatar' }, currentUser?.company?.name?.charAt(0) || 'C'),
           !sidebarCollapsed && h('div', { className: 'workspace-info' },
-            h('div', { className: 'workspace-name' }, currentUser?.company?.name || 'Riverton Works'),
-            h('div', { className: 'workspace-sub' }, 'Company workspace')
-          )
+            h('div', { className: 'workspace-name' }, currentUser?.company?.name || 'Company Workspace'),
+            h('div', { className: 'workspace-sub' }, 'Click to switch company')
+          ),
+          !sidebarCollapsed && h('div', { className: 'company-count-pill', title: `${userCompanies.length || 1} of 3 companies managed` }, `${userCompanies.length || 1}/3`)
         ),
 
         // 2. Separate Account Option
@@ -1592,10 +1659,31 @@ function App() {
         activeTab === 'settings' && h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
-              h('div', { className: 'page-subtitle' }, 'CONFIGURATION'),
+              h('div', { className: 'page-subtitle' }, 'CONFIGURATION & PROFILE'),
               h('h1', { className: 'page-title' }, 'Company Settings'),
-              h('p', { className: 'page-desc' }, 'Update legal identity, tax information, and factory address.')
+              h('p', { className: 'page-desc' }, 'Update legal identity, tax registration, and factory address for the currently active company.')
             )
+          ),
+
+          // Active Company Indicator (Requirement: Profile only shows the company you are currently on)
+          h('div', { className: 'active-company-banner' },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+              h('div', { className: 'workspace-avatar', style: { width: 42, height: 42, fontSize: 17, background: '#2563eb', color: '#fff' } }, currentUser?.company?.name?.charAt(0) || 'C'),
+              h('div', null,
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                  h('strong', { style: { fontSize: 15, color: 'var(--text-primary)' } }, currentUser?.company?.name || 'Active Workspace'),
+                  h('span', { className: 'badge badge-success', style: { fontSize: 11, padding: '2px 8px' } }, '✓ Active Workspace')
+                ),
+                h('div', { style: { fontSize: 12.5, color: '#64748b', marginTop: 2 } },
+                  `Company ID #${currentUser?.company_id || ''} • Managing ${userCompanies.length}/3 companies • Settings changes apply strictly to this workspace only`
+                )
+              )
+            ),
+            h('button', {
+              className: 'btn btn-outline',
+              style: { fontSize: 12, padding: '6px 12px' },
+              onClick: () => { setShowCompanyModal(true); setCompanyError(''); }
+            }, 'Switch Company')
           ),
 
           h('div', { className: 'card', style: { maxWidth: 620, padding: 22 } },
@@ -1871,6 +1959,184 @@ function App() {
             h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setModalType(null) }, 'Cancel'),
             h('button', { type: 'submit', className: 'btn btn-primary' }, 'Save Employee')
           )
+        )
+      )
+    ),
+
+    // Modal for Company Switching and Multi-Company Management (Max 3 companies)
+    showCompanyModal && h('div', {
+      className: 'modal-overlay',
+      onClick: (e) => { if (e.target === e.currentTarget) setShowCompanyModal(false); }
+    },
+      h('div', { className: 'modal-card', style: { maxWidth: 540 } },
+        h('div', { className: 'modal-header' },
+          h('div', null,
+            h('h3', { style: { margin: 0, fontSize: 16 } }, 'Switch Company Workspace'),
+            h('div', { style: { fontSize: 12, color: '#64748b', marginTop: 2 } },
+              `Managing ${userCompanies.length} of 3 allowed companies`
+            )
+          ),
+          h('button', { className: 'modal-close', onClick: () => setShowCompanyModal(false) }, '✕')
+        ),
+        h('div', { className: 'modal-body', style: { padding: '18px 22px' } },
+          companyError && h('div', { style: { background: '#fef2f2', color: '#b91c1c', padding: '9px 12px', borderRadius: 7, fontSize: 12.5, marginBottom: 14 } }, companyError),
+
+          h('div', { style: { fontSize: 12.5, color: '#64748b', marginBottom: 14 } },
+            'Select a company workspace below. Each company maintains complete and strictly isolated data for inventory, sales, expenses, and records.'
+          ),
+
+          // Company List
+          h('div', { className: 'company-list', style: { display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 } },
+            userCompanies.map(c => {
+              const isActive = c.id === currentUser?.company_id;
+              return h('div', {
+                key: c.id,
+                className: `company-card-item ${isActive ? 'active-company-card' : ''}`,
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
+                  borderRadius: 9,
+                  border: isActive ? '2px solid #2563eb' : '1px solid var(--border)',
+                  background: isActive ? (darkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.05)') : 'var(--bg-secondary)',
+                  transition: 'all 0.15s ease'
+                }
+              },
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+                  h('div', {
+                    className: 'workspace-avatar',
+                    style: {
+                      background: isActive ? '#2563eb' : '#64748b',
+                      color: '#fff',
+                      width: 38,
+                      height: 38,
+                      fontSize: 15,
+                      fontWeight: 700
+                    }
+                  }, c.name ? c.name.charAt(0) : 'C'),
+                  h('div', null,
+                    h('div', { style: { fontWeight: 600, fontSize: 13.5, color: 'var(--text-primary)' } }, c.name),
+                    h('div', { style: { fontSize: 11.5, color: '#64748b', marginTop: 1 } },
+                      c.legal_name && c.legal_name !== c.name ? `${c.legal_name} • ` : '',
+                      c.gst_no ? `GST: ${c.gst_no}` : (c.city ? `${c.city}, ${c.state || ''}` : 'Independent workspace')
+                    )
+                  )
+                ),
+                isActive
+                  ? h('span', { className: 'badge badge-success', style: { fontSize: 11.5, padding: '4px 10px' } }, '✓ Active Workspace')
+                  : h('button', {
+                      className: 'btn btn-sm btn-outline',
+                      disabled: companyActionLoading,
+                      onClick: () => handleSwitchCompany(c.id)
+                    }, companyActionLoading ? 'Switching...' : 'Switch Workspace')
+              );
+            })
+          ),
+
+          // Add Company Section (Allowed when < 3)
+          userCompanies.length < 3 ? (
+            !showNewCompanyForm ? (
+              h('div', { style: { textAlign: 'center', marginTop: 10 } },
+                h('button', {
+                  className: 'btn btn-outline',
+                  style: { width: '100%', justifyContent: 'center', borderStyle: 'dashed' },
+                  onClick: () => setShowNewCompanyForm(true)
+                }, h(Icon, { name: 'plus', size: 14 }), `Add Company (${userCompanies.length}/3)`)
+              )
+            ) : (
+              h('form', {
+                onSubmit: handleCreateCompany,
+                style: {
+                  marginTop: 12,
+                  padding: 14,
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: darkMode ? '#1e293b' : '#f8fafc'
+                }
+              },
+                h('div', { style: { fontWeight: 600, fontSize: 13, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                  h('span', null, `Create New Company Workspace (${userCompanies.length + 1} of 3)`),
+                  h('button', {
+                    type: 'button',
+                    style: { background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12 },
+                    onClick: () => setShowNewCompanyForm(false)
+                  }, 'Cancel')
+                ),
+                h('div', { className: 'form-group', style: { marginBottom: 10 } },
+                  h('label', { style: { fontSize: 12 } }, 'Company / Factory Name *'),
+                  h('input', {
+                    className: 'form-input',
+                    placeholder: 'e.g. Acme Precision Tools',
+                    required: true,
+                    value: newCompanyForm.name,
+                    onChange: e => setNewCompanyForm({ ...newCompanyForm, name: e.target.value })
+                  })
+                ),
+                h('div', { className: 'form-group', style: { marginBottom: 10 } },
+                  h('label', { style: { fontSize: 12 } }, 'GST Number (Optional)'),
+                  h('input', {
+                    className: 'form-input',
+                    placeholder: 'e.g. 29AAAAA0000A1Z5',
+                    value: newCompanyForm.gst_no,
+                    onChange: e => setNewCompanyForm({ ...newCompanyForm, gst_no: e.target.value })
+                  })
+                ),
+                h('div', { className: 'form-group', style: { marginBottom: 14 } },
+                  h('label', { style: { fontSize: 12 } }, 'Factory / Office Address (Optional)'),
+                  h('input', {
+                    className: 'form-input',
+                    placeholder: 'e.g. Plot 14, Industrial Area, Peenya',
+                    value: newCompanyForm.address,
+                    onChange: e => setNewCompanyForm({ ...newCompanyForm, address: e.target.value })
+                  })
+                ),
+                h('button', {
+                  type: 'submit',
+                  className: 'btn btn-primary',
+                  disabled: companyActionLoading,
+                  style: { width: '100%', justifyContent: 'center' }
+                }, companyActionLoading ? 'Creating Workspace...' : 'Create & Switch to Company')
+              )
+            )
+          ) : (
+            h('div', {
+              style: {
+                padding: '9px 12px',
+                borderRadius: 7,
+                background: darkMode ? '#1e293b' : '#f1f5f9',
+                border: '1px solid var(--border)',
+                fontSize: 12,
+                color: '#64748b',
+                textAlign: 'center'
+              }
+            }, '✓ You have reached the maximum allowed limit of 3 companies.')
+          ),
+
+          // Informational Notice: Settings can only be edited in Settings/Profile
+          h('div', {
+            style: {
+              marginTop: 16,
+              padding: '10px 12px',
+              borderRadius: 7,
+              background: 'rgba(234, 179, 8, 0.08)',
+              border: '1px solid rgba(234, 179, 8, 0.25)',
+              fontSize: 11.5,
+              color: darkMode ? '#fde047' : '#854d0e',
+              lineHeight: 1.45
+            }
+          },
+            'ℹ️ Company settings, tax details, and legal address can only be changed in ',
+            h('a', {
+              href: '#',
+              onClick: (e) => { e.preventDefault(); setShowCompanyModal(false); setActiveTab('settings'); },
+              style: { fontWeight: 700, textDecoration: 'underline', color: 'inherit' }
+            }, 'Profile / Settings'),
+            '. Data for each company is kept strictly isolated.'
+          )
+        ),
+        h('div', { className: 'modal-footer' },
+          h('button', { type: 'button', className: 'btn btn-outline', onClick: () => setShowCompanyModal(false) }, 'Close')
         )
       )
     )

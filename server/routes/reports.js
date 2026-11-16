@@ -7,8 +7,8 @@ const { requireAuth } = require('../middleware/auth');
 // GET /api/reports/monthly
 router.get('/monthly', requireAuth, async (req, res) => {
   try {
-    const sales = await db.getSales(req.user.id);
-    const expenses = await db.getExpenses(req.user.id);
+    const sales = await db.getSales(req.user.id, req.user.company_id);
+    const expenses = await db.getExpenses(req.user.id, req.user.company_id);
 
     const monthMap = new Map();
 

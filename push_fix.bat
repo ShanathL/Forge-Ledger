@@ -15,7 +15,7 @@ git add .
 
 echo.
 echo Committing fixes...
-git commit -m "Streamline collapse toggle, add Inventory Pie Chart, Stock Health analytics, Filter pills and CSV export"
+git commit -m "Support up to 3 companies per user with sidebar switcher, Profile company settings, and strict data isolation"
 
 echo.
 echo Pushing to GitHub (origin main)...

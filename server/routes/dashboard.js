@@ -7,7 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 // GET /api/dashboard/summary
 router.get('/summary', requireAuth, async (req, res) => {
   try {
-    const summary = await db.getDashboardSummary(req.user.id);
+    const summary = await db.getDashboardSummary(req.user.id, req.user.company_id);
     res.json({ success: true, data: summary });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
