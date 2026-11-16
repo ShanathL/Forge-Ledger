@@ -4604,19 +4604,31 @@ function App() {
               ),
 
               // Theme Mode Toggle
-              h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 10, marginBottom: 18, flexWrap: 'wrap', gap: 12 } },
-                h('div', null,
-                  h('div', { style: { fontWeight: 600, fontSize: 13.5, color: 'var(--text-primary)' } },
-                    darkMode ? '🌙 Dark Industrial Mode' : '☀️ Light Shopfloor Mode'
+              h('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '14px 18px',
+                  background: 'var(--bg-secondary)',
+                  borderRadius: 12,
+                  marginBottom: 20,
+                  flexWrap: 'wrap',
+                  gap: 14
+                }
+              },
+                h('div', { style: { minWidth: 220, flex: 1 } },
+                  h('div', { style: { fontWeight: 700, fontSize: 14, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 } },
+                    h('span', { style: { fontSize: 16 } }, darkMode ? '🌙' : '☀️'),
+                    darkMode ? 'Dark Industrial Mode' : 'Light Shopfloor Mode'
                   ),
-                  h('div', { style: { fontSize: 12, color: 'var(--text-secondary)' } },
+                  h('div', { style: { fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 } },
                     'Silky smooth 450ms color-wave animation and rotating spring icon transition.'
                   )
                 ),
                 h('button', {
                   type: 'button',
-                  className: `btn btn-primary theme-toggle-btn ${themeSwitching ? 'switching' : ''}`,
-                  style: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 16px' },
+                  className: `btn btn-primary theme-toggle-pill-btn ${themeSwitching ? 'switching' : ''}`,
                   onClick: toggleDarkMode
                 },
                   h('span', { className: 'theme-icon', style: { fontSize: 15 } }, darkMode ? '☀️' : '🌙'),
@@ -4640,8 +4652,8 @@ function App() {
                     },
                       h('div', { className: 'accent-color-circle', style: { background: accent.primary } }),
                       h('div', { style: { flex: 1, minWidth: 0 } },
-                        h('div', { style: { fontSize: 12.5, fontWeight: isSelected ? 700 : 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, accent.name),
-                        isSelected && h('div', { style: { fontSize: 10.5, color: accent.primary, fontWeight: 700 } }, '✓ Active')
+                        h('div', { style: { fontSize: 13, fontWeight: isSelected ? 700 : 500, color: 'var(--text-primary)' } }, accent.name),
+                        isSelected && h('div', { style: { fontSize: 11, color: accent.primary, fontWeight: 700, marginTop: 2 } }, '✓ Active')
                       )
                     );
                   })
