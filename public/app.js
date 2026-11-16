@@ -94,8 +94,9 @@ function exportToCsv(filename, rows, headerMap) {
   document.body.removeChild(a);
 }
 
-// Interactive Inventory Pie / Donut Chart Component
+// Enhanced, Highly Visible Inventory Pie / Donut Chart Component
 function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹' }) {
+  const [hoveredSlice, setHoveredSlice] = useState(null);
   const categoryMap = {};
   let totalVal = 0;
 
@@ -126,9 +127,9 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
     totalVal = categories.reduce((sum, c) => sum + c.value, 0);
   }
 
-  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
-  const radius = 52;
-  const circumference = 2 * Math.PI * radius; // ~326.72
+  const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1'];
+  const radius = 62;
+  const circumference = 2 * Math.PI * radius; // ~389.557
 
   let accumulatedPercent = 0;
   const slices = categories.map((cat, idx) => {
@@ -145,74 +146,329 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
     };
   });
 
-  return h('div', { className: 'inventory-pie-widget' },
+  const activeSlice = hoveredSlice ? slices.find(s => s.name === hoveredSlice) : null;
+
+  return h('div', { className: 'inventory-pie-widget enhanced-pie-widget' },
     h('div', { className: 'pie-chart-wrap' },
       h('svg', {
-        viewBox: '0 0 160 160',
-        width: 140,
-        height: 140,
+        viewBox: '0 0 190 190',
+        width: 175,
+        height: 175,
         className: 'pie-svg'
       },
-        // Track
+        // Track Background
         h('circle', {
-          cx: 80,
-          cy: 80,
+          cx: 95,
+          cy: 95,
           r: radius,
           fill: 'none',
-          stroke: 'rgba(148, 163, 184, 0.15)',
-          strokeWidth: 20
+          stroke: 'rgba(148, 163, 184, 0.16)',
+          strokeWidth: 24
         }),
         // Slices
-        slices.map((slice, i) =>
-          h('circle', {
+        slices.map((slice, i) => {
+          const isHovered = hoveredSlice === slice.name;
+          return h('circle', {
             key: slice.name + i,
-            cx: 80,
-            cy: 80,
+            cx: 95,
+            cy: 95,
             r: radius,
             fill: 'none',
             stroke: slice.color,
-            strokeWidth: 20,
+            strokeWidth: isHovered ? 28 : 24,
             strokeDasharray: slice.strokeDasharray,
             strokeDashoffset: slice.strokeDashoffset,
-            transform: 'rotate(-90 80 80)',
-            style: { transition: 'all 0.3s ease' }
-          })
-        ),
+            transform: 'rotate(-90 95 95)',
+            style: {
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              filter: isHovered ? `drop-shadow(0 0 6px ${slice.color})` : 'none',
+              opacity: hoveredSlice && !isHovered ? 0.6 : 1
+            },
+            onMouseEnter: () => setHoveredSlice(slice.name),
+            onMouseLeave: () => setHoveredSlice(null)
+          });
+        }),
         // Donut Center Text
         h('text', {
-          x: 80,
-          y: 75,
+          x: 95,
+          y: activeSlice ? 90 : 92,
           textAnchor: 'middle',
-          fontSize: '12px',
+          fontSize: activeSlice ? '13px' : '13.5px',
           fontWeight: '800',
           fill: 'currentColor',
           fontFamily: 'var(--font-mono)'
-        }, formatCurrency(totalVal, currency)),
+        }, activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)),
         h('text', {
-          x: 80,
-          y: 91,
+          x: 95,
+          y: activeSlice ? 107 : 108,
           textAnchor: 'middle',
-          fontSize: '8.5px',
+          fontSize: '9px',
           fontWeight: '700',
-          fill: 'var(--text-muted)',
+          fill: activeSlice ? activeSlice.color : 'var(--text-muted)',
           letterSpacing: '0.8px'
-        }, 'VALUATION')
+        }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'TOTAL VALUATION')
       )
     ),
     h('div', { className: 'pie-legend' },
-      slices.map(slice =>
-        h('div', { key: slice.name, className: 'pie-legend-row' },
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },
-            h('span', { className: 'pie-legend-dot', style: { backgroundColor: slice.color } }),
-            h('span', { className: 'pie-legend-name' }, slice.name),
-            slice.lowStockCount > 0 && h('span', { className: 'badge badge-warning', style: { fontSize: 9.5, padding: '1px 5px' } }, `${slice.lowStockCount} low`)
-          ),
+      slices.map(slice => {
+        const isHovered = hoveredSlice === slice.name;
+        return h('div', {
+          key: slice.name,
+          className: `pie-legend-row ${isHovered ? 'hovered' : ''}`,
+          style: {
+            cursor: 'pointer',
+            padding: '7px 11px',
+            borderRadius: 8,
+            transition: 'all 0.15s ease',
+            background: isHovered ? 'rgba(37, 99, 235, 0.1)' : 'var(--bg-secondary)',
+            marginBottom: 6,
+            border: isHovered ? `1px solid ${slice.color}` : '1px solid transparent'
+          },
+          onMouseEnter: () => setHoveredSlice(slice.name),
+          onMouseLeave: () => setHoveredSlice(null)
+        },
           h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-            h('span', { className: 'pie-legend-val' }, formatCurrency(slice.value, currency)),
-            h('span', { className: 'pie-legend-pct' }, `${slice.percent}%`)
+            h('span', { className: 'pie-legend-dot', style: { backgroundColor: slice.color, width: 10, height: 10, borderRadius: '50%' } }),
+            h('span', { className: 'pie-legend-name', style: { fontWeight: 600, fontSize: 13 } }, slice.name),
+            slice.lowStockCount > 0 && h('span', { className: 'badge badge-warning', style: { fontSize: 10, padding: '1px 6px' } }, `${slice.lowStockCount} low stock`)
+          ),
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 9 } },
+            h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 } }, formatCurrency(slice.value, currency)),
+            h('span', { className: 'pie-legend-pct', style: { fontWeight: 700, background: slice.color, color: '#fff', padding: '2px 7px', borderRadius: 12, fontSize: 11 } }, `${slice.percent}%`)
           )
+        );
+      })
+    )
+  );
+}
+
+// Sales & Invoices Payment Status Chart Component
+function SalesStatusChart({ sales = [], currency = '₹' }) {
+  let paidSum = 0;
+  let pendingSum = 0;
+  let overdueSum = 0;
+  let paidCount = 0;
+  let pendingCount = 0;
+  let overdueCount = 0;
+
+  (sales || []).forEach(s => {
+    const amt = Number(s.amount) || 0;
+    if (s.status === 'Paid') {
+      paidSum += amt;
+      paidCount++;
+    } else if (s.status === 'Overdue') {
+      overdueSum += amt;
+      overdueCount++;
+    } else {
+      pendingSum += amt;
+      pendingCount++;
+    }
+  });
+
+  const totalSum = paidSum + pendingSum + overdueSum;
+  const totalInvoices = sales.length;
+  const paidPct = totalSum > 0 ? Math.round((paidSum / totalSum) * 100) : 0;
+  const pendingPct = totalSum > 0 ? Math.round((pendingSum / totalSum) * 100) : 0;
+  const overduePct = totalSum > 0 ? Math.max(0, 100 - paidPct - pendingPct) : 0;
+
+  return h('div', { className: 'card chart-card', style: { padding: '16px 20px', marginBottom: 20 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+      h('div', null,
+        h('h3', { className: 'card-title' }, 'Invoice Payment Status & Cash Inflow'),
+        h('div', { className: 'card-subtitle' }, 'Collection efficiency across all generated customer invoices')
+      ),
+      h('span', { className: 'badge badge-neutral' }, `${paidPct}% Collection Rate`)
+    ),
+    // Multi-segment horizontal status progress meter
+    h('div', { className: 'status-meter-bar', style: { height: 14, borderRadius: 7, display: 'flex', overflow: 'hidden', background: 'rgba(148, 163, 184, 0.18)', marginBottom: 14 } },
+      paidPct > 0 && h('div', { style: { width: `${paidPct}%`, background: '#10b981', transition: 'width 0.4s ease' }, title: `Paid: ${formatCurrency(paidSum, currency)} (${paidPct}%)` }),
+      pendingPct > 0 && h('div', { style: { width: `${pendingPct}%`, background: '#f59e0b', transition: 'width 0.4s ease' }, title: `Pending: ${formatCurrency(pendingSum, currency)} (${pendingPct}%)` }),
+      overduePct > 0 && h('div', { style: { width: `${overduePct}%`, background: '#ef4444', transition: 'width 0.4s ease' }, title: `Overdue: ${formatCurrency(overdueSum, currency)} (${overduePct}%)` })
+    ),
+    // 3 Status Cards Grid
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 } },
+      h('div', { className: 'chart-stat-item', style: { borderLeft: '3px solid #10b981' } },
+        h('div', { className: 'chart-stat-label' }, `● Paid Invoices (${paidCount})`),
+        h('div', { className: 'chart-stat-val', style: { color: '#10b981' } }, formatCurrency(paidSum, currency)),
+        h('div', { className: 'chart-stat-sub' }, `${paidPct}% of invoiced revenue`)
+      ),
+      h('div', { className: 'chart-stat-item', style: { borderLeft: '3px solid #f59e0b' } },
+        h('div', { className: 'chart-stat-label' }, `● Pending Due (${pendingCount})`),
+        h('div', { className: 'chart-stat-val', style: { color: '#f59e0b' } }, formatCurrency(pendingSum, currency)),
+        h('div', { className: 'chart-stat-sub' }, `${pendingPct}% awaiting collection`)
+      ),
+      h('div', { className: 'chart-stat-item', style: { borderLeft: '3px solid #ef4444' } },
+        h('div', { className: 'chart-stat-label' }, `● Overdue (${overdueCount})`),
+        h('div', { className: 'chart-stat-val', style: { color: '#ef4444' } }, formatCurrency(overdueSum, currency)),
+        h('div', { className: 'chart-stat-sub' }, `${overduePct}% past due date`)
+      )
+    )
+  );
+}
+
+// Expenses by Category Chart Component
+function ExpenseCategoryChart({ expenses = [], currency = '₹' }) {
+  const catMap = {};
+  let totalExpenses = 0;
+
+  (expenses || []).forEach(e => {
+    const cat = e.category || 'General';
+    const amt = Number(e.amount) || 0;
+    totalExpenses += amt;
+    if (!catMap[cat]) catMap[cat] = { name: cat, amount: 0, count: 0 };
+    catMap[cat].amount += amt;
+    catMap[cat].count += 1;
+  });
+
+  const categories = Object.values(catMap).sort((a, b) => b.amount - a.amount);
+  const colors = ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#ec4899'];
+
+  return h('div', { className: 'card chart-card', style: { padding: '16px 20px', marginBottom: 20 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+      h('div', null,
+        h('h3', { className: 'card-title' }, 'Expenses by Category'),
+        h('div', { className: 'card-subtitle' }, 'Operational spending breakdown and cost distribution')
+      ),
+      h('span', { className: 'badge badge-neutral' }, `${categories.length} Active Categories`)
+    ),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+      categories.map((c, i) => {
+        const pct = totalExpenses > 0 ? Math.round((c.amount / totalExpenses) * 100) : 0;
+        const color = colors[i % colors.length];
+        return h('div', { key: c.name, style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12.5, fontWeight: 600 } },
+            h('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+              h('span', { style: { width: 8, height: 8, borderRadius: '50%', backgroundColor: color, display: 'inline-block' } }),
+              c.name,
+              h('span', { style: { fontSize: 11, color: '#64748b', fontWeight: 400 } }, `(${c.count} records)`)
+            ),
+            h('span', { style: { fontFamily: 'var(--font-mono)' } },
+              `${formatCurrency(c.amount, currency)} `,
+              h('span', { style: { color: '#64748b', fontSize: 11, fontWeight: 400 } }, `(${pct}%)`)
+            )
+          ),
+          h('div', { style: { height: 8, borderRadius: 4, background: 'rgba(148, 163, 184, 0.15)', overflow: 'hidden' } },
+            h('div', { style: { width: `${pct}%`, height: '100%', backgroundColor: color, borderRadius: 4, transition: 'width 0.3s ease' } })
+          )
+        );
+      })
+    )
+  );
+}
+
+// Production Manufacturing Status Chart Component
+function ProductionStatusChart({ productionRuns = [] }) {
+  let completedCount = 0;
+  let inProgressCount = 0;
+  let plannedCount = 0;
+  let completedUnits = 0;
+
+  (productionRuns || []).forEach(r => {
+    const qty = Number(r.quantity) || 0;
+    if (r.status === 'Completed') {
+      completedCount++;
+      completedUnits += qty;
+    } else if (r.status === 'In progress') {
+      inProgressCount++;
+    } else {
+      plannedCount++;
+    }
+  });
+
+  const totalRuns = productionRuns.length;
+  const completionRate = totalRuns > 0 ? Math.round((completedCount / totalRuns) * 100) : 0;
+
+  return h('div', { className: 'card chart-card', style: { padding: '16px 20px', marginBottom: 20 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
+      h('div', null,
+        h('h3', { className: 'card-title' }, 'Manufacturing Batch Health & Fulfillment'),
+        h('div', { className: 'card-subtitle' }, 'Real-time output status across all scheduled production jobs')
+      ),
+      h('span', { className: 'badge badge-neutral' }, `${completionRate}% Completion Rate`)
+    ),
+    h('div', { className: 'status-meter-bar', style: { height: 12, borderRadius: 6, display: 'flex', overflow: 'hidden', background: 'rgba(148, 163, 184, 0.18)', marginBottom: 14 } },
+      totalRuns > 0 && completedCount > 0 && h('div', { style: { width: `${(completedCount / totalRuns) * 100}%`, background: '#10b981', transition: 'width 0.3s ease' }, title: `Completed: ${completedCount}` }),
+      totalRuns > 0 && inProgressCount > 0 && h('div', { style: { width: `${(inProgressCount / totalRuns) * 100}%`, background: '#3b82f6', transition: 'width 0.3s ease' }, title: `In Progress: ${inProgressCount}` }),
+      totalRuns > 0 && plannedCount > 0 && h('div', { style: { width: `${(plannedCount / totalRuns) * 100}%`, background: '#f59e0b', transition: 'width 0.3s ease' }, title: `Planned: ${plannedCount}` })
+    ),
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 } },
+      h('div', { className: 'chart-stat-item', style: { borderLeft: '3px solid #10b981' } },
+        h('div', { className: 'chart-stat-label' }, '✓ Completed Batches'),
+        h('div', { className: 'chart-stat-val', style: { color: '#10b981' } }, `${completedCount} runs`),
+        h('div', { className: 'chart-stat-sub' }, `${completedUnits} units produced`)
+      ),
+      h('div', { className: 'chart-stat-item', style: { borderLeft: '3px solid #3b82f6' } },
+        h('div', { className: 'chart-stat-label' }, '⚙ In Progress'),
+        h('div', { className: 'chart-stat-val', style: { color: '#3b82f6' } }, `${inProgressCount} runs`),
+        h('div', { className: 'chart-stat-sub' }, 'Active on shop floor')
+      ),
+      h('div', { className: 'chart-stat-item', style: { borderLeft: '3px solid #f59e0b' } },
+        h('div', { className: 'chart-stat-label' }, '📅 Planned / Queued'),
+        h('div', { className: 'chart-stat-val', style: { color: '#f59e0b' } }, `${plannedCount} runs`),
+        h('div', { className: 'chart-stat-sub' }, 'Scheduled batches')
+      )
+    )
+  );
+}
+
+// Reports Comparison Bar Chart Component
+function ReportsComparisonChart({ reportsData = null, currency = '₹' }) {
+  const rows = reportsData?.monthly || [
+    { month: '2026-09', sales: 129200, expenses: 59950, net: 69250 }
+  ];
+
+  const maxVal = Math.max(1, ...rows.map(r => Math.max(Number(r.sales) || 0, Number(r.expenses) || 0)));
+
+  return h('div', { className: 'card chart-card', style: { padding: '18px 20px', marginBottom: 20 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+      h('div', null,
+        h('h3', { className: 'card-title' }, 'Monthly Revenue vs Expenses Comparison'),
+        h('div', { className: 'card-subtitle' }, 'Visual comparison of monthly sales inflow vs operating expenses')
+      ),
+      h('div', { style: { display: 'flex', gap: 14, fontSize: 12 } },
+        h('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          h('span', { style: { width: 10, height: 10, borderRadius: 2, backgroundColor: '#2563eb' } }), 'Sales Revenue'
+        ),
+        h('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          h('span', { style: { width: 10, height: 10, borderRadius: 2, backgroundColor: '#ef4444' } }), 'Operating Expenses'
+        ),
+        h('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          h('span', { style: { width: 10, height: 10, borderRadius: 2, backgroundColor: '#10b981' } }), 'Net Profit'
         )
       )
+    ),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+      rows.map(row => {
+        const salesPct = Math.round(((Number(row.sales) || 0) / maxVal) * 100);
+        const expPct = Math.round(((Number(row.expenses) || 0) / maxVal) * 100);
+        const net = Number(row.net) || ((Number(row.sales) || 0) - (Number(row.expenses) || 0));
+
+        return h('div', { key: row.month, style: { display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 14px', borderRadius: 8, background: 'var(--bg-secondary)' } },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, fontWeight: 700 } },
+            h('span', { style: { fontFamily: 'var(--font-mono)' } }, `Month: ${row.month}`),
+            h('span', { style: { color: net >= 0 ? '#10b981' : '#ef4444', fontFamily: 'var(--font-mono)' } },
+              `Net: ${formatCurrency(net, currency)}`
+            )
+          ),
+          // Sales Bar
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            h('span', { style: { width: 65, fontSize: 11, color: '#64748b' } }, 'Sales'),
+            h('div', { style: { flex: 1, height: 14, borderRadius: 4, background: 'rgba(148, 163, 184, 0.15)', overflow: 'hidden' } },
+              h('div', { style: { width: `${salesPct}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #2563eb)', borderRadius: 4, transition: 'width 0.4s ease' } })
+            ),
+            h('span', { style: { width: 95, textAlign: 'right', fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600 } }, formatCurrency(row.sales, currency))
+          ),
+          // Expense Bar
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            h('span', { style: { width: 65, fontSize: 11, color: '#64748b' } }, 'Expenses'),
+            h('div', { style: { flex: 1, height: 14, borderRadius: 4, background: 'rgba(148, 163, 184, 0.15)', overflow: 'hidden' } },
+              h('div', { style: { width: `${expPct}%`, height: '100%', background: 'linear-gradient(90deg, #f87171, #ef4444)', borderRadius: 4, transition: 'width 0.4s ease' } })
+            ),
+            h('span', { style: { width: 95, textAlign: 'right', fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#64748b' } }, formatCurrency(row.expenses, currency))
+          )
+        );
+      })
     )
   );
 }
@@ -647,12 +903,20 @@ function App() {
   return h('div', { className: `app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${darkMode ? 'dark-mode' : ''}` },
     // SIDEBAR
     h('aside', { className: `sidebar ${sidebarCollapsed ? 'collapsed' : ''}` },
-      // Sidebar Header (Single toggle button is the hamburger in the top header)
-      !sidebarCollapsed && h('div', { className: 'sidebar-header' },
-        h('div', { className: 'sidebar-title' }, 'NAVIGATION')
+      // Sidebar Header (Merged collapse toggle directly inside sidebar)
+      h('div', { className: 'sidebar-header' },
+        !sidebarCollapsed && h('div', { className: 'sidebar-title' }, 'NAVIGATION'),
+        h('button', {
+          className: 'sidebar-toggle-btn',
+          onClick: toggleSidebar,
+          title: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+          'aria-label': sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+        },
+          h(Icon, { name: sidebarCollapsed ? 'chevronRight' : 'chevronLeft', size: 14 })
+        )
       ),
 
-      // Navigation Items (Starts immediately below header)
+      // Navigation Items (Starts immediately below header; Settings removed as Profile handles account)
       h('nav', { className: 'sidebar-nav' },
         !sidebarCollapsed && h('div', { className: 'nav-section-title' }, 'WORKSPACE'),
         [
@@ -663,8 +927,7 @@ function App() {
           { id: 'rawMaterials', label: 'Raw materials', icon: 'rawMaterials' },
           { id: 'production', label: 'Production', icon: 'production' },
           { id: 'payroll', label: 'Payroll', icon: 'payroll' },
-          { id: 'reports', label: 'Reports', icon: 'reports' },
-          { id: 'settings', label: 'Settings', icon: 'settings' }
+          { id: 'reports', label: 'Reports', icon: 'reports' }
         ].map(item =>
           h('a', {
             key: item.id,
@@ -678,7 +941,7 @@ function App() {
         )
       ),
 
-      // Sidebar Footer (Company above profile, then separate Account & Logout)
+      // Sidebar Footer (Company above profile, clicking profile opens Settings & Account)
       h('div', { className: 'sidebar-footer' },
         // 1. Company / Workspace Selector (Click to switch company, max 3)
         h('div', {
@@ -694,7 +957,7 @@ function App() {
           !sidebarCollapsed && h('div', { className: 'company-count-pill', title: `${userCompanies.length || 1} of 3 companies managed` }, `${userCompanies.length || 1}/3`)
         ),
 
-        // 2. Separate Account Option
+        // 2. Separate Profile & Account Option (Navigates to Settings)
         h('div', {
           className: `sidebar-account-btn ${activeTab === 'settings' ? 'active' : ''}`,
           title: `Account: ${currentUser?.name || 'Demo User'} (${currentUser?.email || 'demo@forgeledger.local'})`,
@@ -703,35 +966,26 @@ function App() {
           h('div', { className: 'user-avatar' }, currentUser?.name?.charAt(0) || 'D'),
           !sidebarCollapsed && h('div', { className: 'account-info' },
             h('div', { className: 'account-name' }, currentUser?.name || 'Demo User'),
-            h('div', { className: 'account-role' }, 'Account settings')
+            h('div', { className: 'account-role' }, 'Account & company settings')
           )
-        ),
-
-        // 3. Separate Logout Option
-        h('button', {
-          className: 'sidebar-logout-btn',
-          onClick: handleLogout,
-          title: 'Sign out'
-        },
-          h(Icon, { name: 'logout', size: 15 }),
-          !sidebarCollapsed && h('span', null, 'Sign out')
         )
       )
     ),
 
     // MAIN CONTENT AREA
     h('div', { className: 'main-wrapper' },
-      // Top Bar (Clean, with Dark mode button & Logo at top right)
+      // Top Bar (Logo at top left, Logout button at top right)
       h('header', { className: 'top-header' },
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
-          h('button', {
-            className: 'header-toggle-btn',
-            onClick: toggleSidebar,
-            title: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
-            'aria-label': 'Toggle navigation sidebar'
-          },
-            h(Icon, { name: 'menu', size: 17 })
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+          // Logo moved to top left
+          h('div', { className: 'top-nav-brand' },
+            h('div', { className: 'brand-icon' }, 'F'),
+            h('div', { className: 'brand-text' },
+              h('h1', null, 'forgeledger'),
+              h('span', null, 'BUSINESS WORKSPACE')
+            )
           ),
+          h('div', { className: 'header-divider' }),
           h('div', { className: 'breadcrumb' },
             'Workspace / ',
             h('span', { className: 'current' },
@@ -742,7 +996,7 @@ function App() {
               activeTab === 'rawMaterials' ? 'Raw materials' :
               activeTab === 'production' ? 'Production' :
               activeTab === 'payroll' ? 'Payroll' :
-              activeTab === 'reports' ? 'Reports' : 'Settings'
+              activeTab === 'reports' ? 'Reports' : 'Settings & Profile'
             )
           )
         ),
@@ -759,12 +1013,15 @@ function App() {
           },
             h(Icon, { name: darkMode ? 'sun' : 'moon', size: 16 })
           ),
-          h('div', { className: 'top-nav-brand' },
-            h('div', { className: 'brand-icon' }, 'F'),
-            h('div', { className: 'brand-text' },
-              h('h1', null, 'forgeledger'),
-              h('span', null, 'BUSINESS WORKSPACE')
-            )
+          // Logout button moved to top right
+          h('button', {
+            className: 'header-logout-btn',
+            onClick: handleLogout,
+            title: 'Sign out of ForgeLedger',
+            'aria-label': 'Sign out'
+          },
+            h(Icon, { name: 'logout', size: 14 }),
+            h('span', null, 'Sign out')
           )
         )
       ),
@@ -1188,6 +1445,9 @@ function App() {
             )
           ),
 
+          // Sales Invoice Payment Status Chart
+          h(SalesStatusChart, { sales, currency: '₹' }),
+
           // Search Bar Row (Fig. 5)
           h('div', { className: 'search-bar-row' },
             h('div', { className: 'search-wrapper' },
@@ -1286,6 +1546,9 @@ function App() {
               h('div', { className: 'metric-value' }, distinctExpenseCategories || 3)
             )
           ),
+
+          // Expenses Outflow by Category Chart
+          h(ExpenseCategoryChart, { expenses, currency: '₹' }),
 
           // Search Row (Fig. 6)
           h('div', { className: 'search-bar-row' },
@@ -1460,6 +1723,31 @@ function App() {
             )
           ),
 
+          // 3 Metric Cards for Production
+          h('div', { className: 'metrics-grid', style: { gridTemplateColumns: 'repeat(3, 1fr)' } },
+            h('div', { className: 'metric-card' },
+              h('div', { className: 'metric-top' },
+                h('span', { className: 'metric-label' }, 'Total Batches')
+              ),
+              h('div', { className: 'metric-value' }, productionRuns.length)
+            ),
+            h('div', { className: 'metric-card' },
+              h('div', { className: 'metric-top' },
+                h('span', { className: 'metric-label' }, 'In-Progress Jobs')
+              ),
+              h('div', { className: 'metric-value' }, productionRuns.filter(r => r.status === 'In progress').length)
+            ),
+            h('div', { className: 'metric-card' },
+              h('div', { className: 'metric-top' },
+                h('span', { className: 'metric-label' }, 'Completed Batches')
+              ),
+              h('div', { className: 'metric-value' }, productionRuns.filter(r => r.status === 'Completed').length)
+            )
+          ),
+
+          // Production Batch Health & Status Chart
+          h(ProductionStatusChart, { productionRuns }),
+
           // Production Table
           h('div', { className: 'card' },
             h('div', { className: 'table-responsive' },
@@ -1614,6 +1902,9 @@ function App() {
               )
             )
           ),
+
+          // Monthly Revenue vs Expenses Comparison Chart
+          h(ReportsComparisonChart, { reportsData, currency: '₹' }),
 
           // Monthly Summary Table
           h('div', { className: 'card' },

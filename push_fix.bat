@@ -15,7 +15,7 @@ git add .
 
 echo.
 echo Committing fixes...
-git commit -m "Support up to 3 companies per user with sidebar switcher, Profile company settings, and strict data isolation"
+git commit -m "Merge sidebar collapse, move logo top-left, move logout top-right, enhance pie chart, add charts across pages, remove redundant settings nav"
 
 echo.
 echo Pushing to GitHub (origin main)...
