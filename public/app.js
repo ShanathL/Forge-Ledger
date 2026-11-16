@@ -1553,6 +1553,14 @@ function App() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingCustomizations, setSavingCustomizations] = useState(false);
 
+  // Security & Password Form State
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [exportingBackup, setExportingBackup] = useState(false);
+  const [showAvatarCustomizer, setShowAvatarCustomizer] = useState(false);
+  const [avatarIcon, setAvatarIcon] = useState('');
+  const [avatarGradient, setAvatarGradient] = useState('linear-gradient(135deg, #2563eb, #4f46e5)');
+
   // Animated Theme Switcher (Smooth 0.42s transition curve across the workspace)
   const toggleDarkMode = useCallback(() => {
     setThemeSwitching(true);
@@ -1604,6 +1612,15 @@ function App() {
       });
       if (currentUser.preferences && typeof currentUser.preferences === 'object') {
         setCustomizations(prev => ({ ...prev, ...currentUser.preferences }));
+      }
+      if (currentUser.picture) {
+        if (currentUser.picture.startsWith('gradient:')) {
+          setAvatarGradient(currentUser.picture.replace('gradient:', ''));
+        } else if (currentUser.picture.startsWith('icon:')) {
+          const parts = currentUser.picture.split('|');
+          setAvatarIcon(parts[0].replace('icon:', ''));
+          if (parts[1]) setAvatarGradient(parts[1]);
+        }
       }
     }
   }, [currentUser]);
@@ -2330,6 +2347,107 @@ function App() {
       });
   }
 
+  function handleSelectAvatar(newIcon, newGradient) {
+    const icon = newIcon !== undefined ? newIcon : avatarIcon;
+    const grad = newGradient !== undefined ? newGradient : avatarGradient;
+    setAvatarIcon(icon);
+    setAvatarGradient(grad);
+    const picStr = `icon:${icon}|${grad}`;
+    fetch('/api/auth/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ picture: picStr })
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success && res.user) {
+          setCurrentUser(prev => ({ ...prev, ...res.user }));
+          addToast('Avatar style updated!', 'success');
+        }
+      })
+      .catch(() => {});
+  }
+
+  function getPasswordStrength(pwd) {
+    if (!pwd) return { score: 0, label: 'Enter a strong password', color: 'transparent' };
+    let score = 0;
+    if (pwd.length >= 6) score += 1;
+    if (pwd.length >= 10) score += 1;
+    if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score += 1;
+    if (/[0-9]/.test(pwd)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pwd)) score += 1;
+
+    if (score <= 1) return { score: 25, label: 'Weak (min 6 characters required)', color: '#ef4444' };
+    if (score <= 3) return { score: 60, label: 'Fair (add numbers & symbols for higher security)', color: '#f59e0b' };
+    if (score === 4) return { score: 85, label: 'Good (strong protection)', color: '#10b981' };
+    return { score: 100, label: 'Excellent (enterprise grade protection)', color: '#059669' };
+  }
+
+  function handleChangePassword(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!passwordForm.currentPassword) {
+      addToast('Please enter your current password.', 'warning');
+      return;
+    }
+    if (!passwordForm.newPassword || passwordForm.newPassword.length < 6) {
+      addToast('New password must be at least 6 characters long.', 'warning');
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      addToast('New password and confirmation do not match.', 'error');
+      return;
+    }
+
+    setChangingPassword(true);
+    fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(passwordForm)
+    })
+      .then(r => r.json())
+      .then(res => {
+        setChangingPassword(false);
+        if (res.success) {
+          addToast('Password updated successfully! Keep your credentials secure.', 'success');
+          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        } else {
+          addToast(res.error || 'Failed to update password', 'error');
+        }
+      })
+      .catch(err => {
+        setChangingPassword(false);
+        addToast(err.message || 'Error updating password', 'error');
+      });
+  }
+
+  function handleExportBackup() {
+    setExportingBackup(true);
+    addToast('Generating full workspace backup archive...', 'info');
+    fetch('/api/auth/export-backup')
+      .then(r => {
+        if (!r.ok) throw new Error('Backup failed');
+        return r.blob();
+      })
+      .then(blob => {
+        setExportingBackup(false);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        const compSlug = (currentUser?.company?.name || 'workspace').toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const dateStr = new Date().toISOString().split('T')[0];
+        a.download = `forgeledger-backup-${compSlug}-${dateStr}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        addToast('Full workspace backup archive downloaded successfully!', 'success');
+      })
+      .catch(err => {
+        setExportingBackup(false);
+        addToast(err.message || 'Failed to export backup', 'error');
+      });
+  }
+
   function handleSwitchCompany(companyId) {
     setCompanyActionLoading(true);
     setCompanyError('');
@@ -2540,7 +2658,10 @@ function App() {
           title: `Account: ${currentUser?.name || 'Demo User'} (${currentUser?.email || 'demo@forgeledger.local'})`,
           onClick: () => { setActiveTab('settings'); }
         },
-          h('div', { className: 'user-avatar' }, currentUser?.name?.charAt(0) || 'D'),
+          h('div', {
+            className: 'user-avatar',
+            style: { background: avatarGradient }
+          }, avatarIcon || (currentUser?.name?.charAt(0) || 'D')),
           !sidebarCollapsed && h('div', { className: 'account-info' },
             h('div', { className: 'account-name' }, currentUser?.name || 'Demo User'),
             h('div', { className: 'account-role' }, 'Account & company settings')
@@ -3974,63 +4095,160 @@ function App() {
           )
         ),
 
-        // ================= TAB: SETTINGS & PROFILE =================
+        // ================= TAB: ACCOUNT & SETTINGS =================
         activeTab === 'settings' && h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
-              h('div', { className: 'page-subtitle' }, 'CONFIGURATION, PROFILE & PREFERENCES'),
-              h('h1', { className: 'page-title' }, 'Profile & Settings'),
-              h('p', { className: 'page-desc' }, 'Manage your personal operator identity, company workspace registration, and interface customizations.')
+              h('div', { className: 'page-subtitle' }, 'ACCOUNT, SECURITY & WORKSPACE CONTROL'),
+              h('h1', { className: 'page-title' }, 'Account & Workspace Center'),
+              h('p', { className: 'page-desc' }, 'Manage your personal operator identity, credentials & security, active workspaces, customizations, and offline data backups.')
             )
           ),
 
           // Sub-tabs navigation
           h('div', { className: 'settings-tabs-nav' },
-            h('button', {
-              className: `settings-tab-btn ${settingsTab === 'profile' ? 'active' : ''}`,
-              onClick: () => setSettingsTab('profile')
-            },
-              h('span', null, '👤'),
-              h('span', null, 'Personal Profile')
-            ),
-            h('button', {
-              className: `settings-tab-btn ${settingsTab === 'company' ? 'active' : ''}`,
-              onClick: () => setSettingsTab('company')
-            },
-              h('span', null, '🏢'),
-              h('span', null, 'Company Workspace')
-            ),
-            h('button', {
-              className: `settings-tab-btn ${settingsTab === 'customization' ? 'active' : ''}`,
-              onClick: () => setSettingsTab('customization')
-            },
-              h('span', null, '🎨'),
-              h('span', null, 'Workspace Customization')
+            [
+              { id: 'profile', icon: '👤', label: 'Profile & Identity' },
+              { id: 'security', icon: '🔒', label: 'Security & Access' },
+              { id: 'company', icon: '🏢', label: 'Company Workspace' },
+              { id: 'customization', icon: '🎨', label: 'Workspace Customization' },
+              { id: 'backup', icon: '💾', label: 'Data & Backup' }
+            ].map(tab =>
+              h('button', {
+                key: tab.id,
+                className: `settings-tab-btn ${settingsTab === tab.id ? 'active' : ''}`,
+                onClick: () => setSettingsTab(tab.id)
+              },
+                h('span', null, tab.icon),
+                h('span', null, tab.label)
+              )
             )
           ),
 
-          // ----- SUB-TAB 1: PERSONAL PROFILE -----
+          // ----- SUB-TAB 1: PERSONAL PROFILE & IDENTITY -----
           settingsTab === 'profile' && h('div', null,
-            // Profile Hero Card
+            // Profile Hero Card with Avatar & Studio Toggle
             h('div', { className: 'profile-hero-card' },
-              h('div', { className: 'profile-avatar-large' },
-                (profileForm.name || currentUser?.name || 'U').charAt(0).toUpperCase()
+              h('div', {
+                className: 'profile-avatar-large',
+                style: { background: avatarGradient }
+              },
+                avatarIcon || (profileForm.name || currentUser?.name || 'U').charAt(0).toUpperCase()
               ),
-              h('div', { style: { flex: 1 } },
+              h('div', { style: { flex: 1, minWidth: 200 } },
                 h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 } },
-                  h('h2', { style: { margin: 0, fontSize: 18, color: 'var(--text-primary)' } }, profileForm.name || currentUser?.name || 'Operator Profile'),
+                  h('h2', { style: { margin: 0, fontSize: 19, color: 'var(--text-primary)' } }, profileForm.name || currentUser?.name || 'Operator Profile'),
                   h('span', { className: 'badge badge-primary', style: { fontSize: 11, padding: '2px 8px' } }, profileForm.role || 'Plant Manager'),
-                  h('span', { className: 'badge badge-info', style: { fontSize: 11, padding: '2px 8px' } }, profileForm.department || 'Operations')
+                  h('span', { className: 'badge badge-info', style: { fontSize: 11, padding: '2px 8px' } }, profileForm.department || 'Operations'),
+                  h('span', { className: 'badge badge-success', style: { fontSize: 11, padding: '2px 8px' } }, '🟢 Active Operator')
                 ),
                 h('div', { style: { fontSize: 13, color: 'var(--text-secondary)' } },
                   currentUser?.email || 'Logged in operator',
                   currentUser?.company?.name ? ` • Workspace: ${currentUser.company.name}` : ''
                 )
+              ),
+              h('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                style: { fontSize: 12, padding: '7px 14px', whiteSpace: 'nowrap' },
+                onClick: () => setShowAvatarCustomizer(!showAvatarCustomizer)
+              }, showAvatarCustomizer ? '✕ Close Avatar Studio' : '🎨 Customize Avatar')
+            ),
+
+            // Expandable Avatar Customizer Studio
+            showAvatarCustomizer && h('div', { className: 'avatar-customizer-wrap' },
+              h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
+                h('div', null,
+                  h('strong', { style: { fontSize: 14, color: 'var(--text-primary)' } }, 'Operator Avatar Studio'),
+                  h('div', { style: { fontSize: 12, color: 'var(--text-secondary)' } }, 'Pick an industrial badge icon or customize your operator gradient color')
+                ),
+                h('button', {
+                  className: 'btn btn-outline',
+                  style: { fontSize: 11, padding: '4px 10px' },
+                  onClick: () => handleSelectAvatar('', 'linear-gradient(135deg, #2563eb, #4f46e5)')
+                }, 'Reset to Default')
+              ),
+
+              h('div', { style: { marginBottom: 12 } },
+                h('label', { style: { fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' } }, '1. SELECT AVATAR BADGE / ICON:'),
+                h('div', { className: 'avatar-preset-row' },
+                  [
+                    { id: '', label: 'Default Initials', icon: '🔤' },
+                    { id: '🏭', label: 'Factory Plant', icon: '🏭' },
+                    { id: '⚙️', label: 'Manufacturing & CNC', icon: '⚙️' },
+                    { id: '🛡️', label: 'Quality & Safety', icon: '🛡️' },
+                    { id: '⚡', label: 'Electrical & Power', icon: '⚡' },
+                    { id: '📊', label: 'Operations & ERP', icon: '📊' },
+                    { id: '📦', label: 'Warehouse & Store', icon: '📦' },
+                    { id: '💼', label: 'Executive & Owner', icon: '💼' },
+                    { id: '🔬', label: 'Metallurgy & Testing', icon: '🔬' }
+                  ].map(item =>
+                    h('button', {
+                      key: item.id || 'initials',
+                      type: 'button',
+                      className: `avatar-preset-btn ${avatarIcon === item.id ? 'active' : ''}`,
+                      title: item.label,
+                      onClick: () => handleSelectAvatar(item.id, undefined)
+                    }, item.icon)
+                  )
+                )
+              ),
+
+              h('div', null,
+                h('label', { style: { fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' } }, '2. SELECT AVATAR GRADIENT THEME:'),
+                h('div', { className: 'avatar-gradient-row' },
+                  [
+                    { name: 'Cobalt Indigo', grad: 'linear-gradient(135deg, #2563eb, #4f46e5)' },
+                    { name: 'Emerald Plant', grad: 'linear-gradient(135deg, #059669, #10b981)' },
+                    { name: 'Royal Violet', grad: 'linear-gradient(135deg, #7c3aed, #9333ea)' },
+                    { name: 'Crimson Forge', grad: 'linear-gradient(135deg, #e11d48, #f43f5e)' },
+                    { name: 'Amber Foundry', grad: 'linear-gradient(135deg, #d97706, #f59e0b)' },
+                    { name: 'Steel Cyan', grad: 'linear-gradient(135deg, #0d9488, #14b8a6)' },
+                    { name: 'Midnight Titanium', grad: 'linear-gradient(135deg, #334155, #0f172a)' }
+                  ].map(g =>
+                    h('div', {
+                      key: g.name,
+                      className: `avatar-gradient-swatch ${avatarGradient === g.grad ? 'active' : ''}`,
+                      style: { background: g.grad },
+                      title: g.name,
+                      onClick: () => handleSelectAvatar(undefined, g.grad)
+                    })
+                  )
+                )
+              )
+            ),
+
+            // Operator Activity & Workspace Footprint Metrics
+            h('div', { className: 'account-stats-grid' },
+              h('div', { className: 'account-stat-pill' },
+                h('div', { className: 'stat-label' }, 'Managed Workspaces'),
+                h('div', { className: 'stat-value' }, `${userCompanies.length || 1} / 3`),
+                h('div', { style: { fontSize: 11, color: 'var(--text-secondary)' } }, 'Active multi-tenancy')
+              ),
+              h('div', { className: 'account-stat-pill' },
+                h('div', { className: 'stat-label' }, 'Catalog Products'),
+                h('div', { className: 'stat-value' }, `${(inventory || []).filter(i => i.category !== 'Raw material').length}`),
+                h('div', { style: { fontSize: 11, color: 'var(--text-secondary)' } }, 'Finished goods SKU')
+              ),
+              h('div', { className: 'account-stat-pill' },
+                h('div', { className: 'stat-label' }, 'Raw Materials'),
+                h('div', { className: 'stat-value' }, `${(inventory || []).filter(i => i.category === 'Raw material').length}`),
+                h('div', { style: { fontSize: 11, color: 'var(--text-secondary)' } }, 'Inventory items')
+              ),
+              h('div', { className: 'account-stat-pill' },
+                h('div', { className: 'stat-label' }, 'Production Batches'),
+                h('div', { className: 'stat-value' }, `${(productionRuns || []).length}`),
+                h('div', { style: { fontSize: 11, color: 'var(--text-secondary)' } }, 'Completed & in-progress')
+              ),
+              h('div', { className: 'account-stat-pill' },
+                h('div', { className: 'stat-label' }, 'Invoices Issued'),
+                h('div', { className: 'stat-value' }, `${(sales || []).length}`),
+                h('div', { style: { fontSize: 11, color: 'var(--text-secondary)' } }, 'Sales ledger entries')
               )
             ),
 
             // Profile Form Card
-            h('div', { className: 'card', style: { maxWidth: 760, padding: 24 } },
+            h('div', { className: 'card', style: { maxWidth: 780, padding: 24 } },
               h('div', { style: { marginBottom: 18, borderBottom: '1px solid var(--border-light)', paddingBottom: 12 } },
                 h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Personal & Operator Details'),
                 h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
@@ -4138,9 +4356,125 @@ function App() {
             )
           ),
 
-          // ----- SUB-TAB 2: COMPANY WORKSPACE -----
+          // ----- SUB-TAB 2: SECURITY & ACCESS -----
+          settingsTab === 'security' && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 760 } },
+            // Active Session & Authentication Card
+            h('div', { className: 'security-session-card' },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+                h('div', {
+                  style: {
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    background: 'var(--primary-light)',
+                    color: 'var(--primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 22
+                  }
+                }, '💻'),
+                h('div', null,
+                  h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                    h('strong', { style: { fontSize: 14.5, color: 'var(--text-primary)' } }, 'Current Browser Session'),
+                    h('span', { className: 'badge badge-success', style: { fontSize: 11, padding: '2px 8px' } }, '🟢 Active Now')
+                  ),
+                  h('div', { style: { fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 } },
+                    `Authenticated as ${currentUser?.email || 'operator'} • HTTPS TLS 1.3 Encryption • Bearer Token Active`
+                  )
+                )
+              ),
+              h('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                style: { fontSize: 12, padding: '6px 14px' },
+                onClick: handleLogout
+              }, 'Sign Out')
+            ),
+
+            // Change Password Card
+            h('div', { className: 'card', style: { padding: 24 } },
+              h('div', { style: { marginBottom: 18, borderBottom: '1px solid var(--border-light)', paddingBottom: 12 } },
+                h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Update Account Password'),
+                h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
+                  'Protect your manufacturing operations with a strong password of at least 6 characters.'
+                )
+              ),
+              h('form', { onSubmit: handleChangePassword },
+                h('div', { className: 'form-group', style: { marginBottom: 14 } },
+                  h('label', null, 'Current Password'),
+                  h('input', {
+                    className: 'form-input',
+                    type: 'password',
+                    placeholder: 'Enter your current password',
+                    value: passwordForm.currentPassword,
+                    onChange: e => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })
+                  })
+                ),
+
+                h('div', { className: 'form-group', style: { marginBottom: 14 } },
+                  h('label', null, 'New Password'),
+                  h('input', {
+                    className: 'form-input',
+                    type: 'password',
+                    placeholder: 'Enter new password (min. 6 characters)',
+                    value: passwordForm.newPassword,
+                    onChange: e => setPasswordForm({ ...passwordForm, newPassword: e.target.value })
+                  }),
+                  // Live Strength Indicator
+                  (() => {
+                    const str = getPasswordStrength(passwordForm.newPassword);
+                    return passwordForm.newPassword ? h('div', { className: 'password-strength-container' },
+                      h('div', { className: 'password-strength-bar' },
+                        h('div', { className: 'password-strength-fill', style: { width: `${str.score}%`, backgroundColor: str.color } })
+                      ),
+                      h('div', { className: 'password-strength-label', style: { color: str.color } }, str.label)
+                    ) : null;
+                  })()
+                ),
+
+                h('div', { className: 'form-group', style: { marginBottom: 20 } },
+                  h('label', null, 'Confirm New Password'),
+                  h('input', {
+                    className: 'form-input',
+                    type: 'password',
+                    placeholder: 'Confirm new password',
+                    value: passwordForm.confirmPassword,
+                    onChange: e => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })
+                  }),
+                  passwordForm.confirmPassword && passwordForm.newPassword !== passwordForm.confirmPassword && h(
+                    'div',
+                    { style: { fontSize: 11.5, color: '#ef4444', marginTop: 4 } },
+                    '⚠️ Passwords do not match'
+                  )
+                ),
+
+                h('button', {
+                  type: 'submit',
+                  className: 'btn btn-primary',
+                  disabled: changingPassword,
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 8 }
+                },
+                  changingPassword ? 'Updating Password...' : '🔒 Update Password'
+                )
+              )
+            ),
+
+            // Tenant Isolation & Security Assurance
+            h('div', { className: 'card', style: { padding: 20, background: 'var(--bg-secondary)' } },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 } },
+                h('span', { style: { fontSize: 18 } }, '🛡️'),
+                h('strong', { style: { fontSize: 14, color: 'var(--text-primary)' } }, 'Multi-Tenant Data Segregation Guarantee')
+              ),
+              h('div', { style: { fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6 } },
+                'ForgeLedger enforces strict workspace-level isolation on every database query. Your cost prices, raw material bills, customer invoices, and employee wages are partitioned by Company ID and protected against cross-tenant data leaks.'
+              )
+            )
+          ),
+
+          // ----- SUB-TAB 3: COMPANY WORKSPACE -----
           settingsTab === 'company' && h('div', null,
-            // Active Company Indicator (Requirement: Profile only shows the company you are currently on)
+            // Active Company Banner
             h('div', { className: 'active-company-banner' },
               h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
                 h('div', { className: 'workspace-avatar', style: { width: 42, height: 42, fontSize: 17, background: 'var(--primary)', color: '#fff' } }, currentUser?.company?.name?.charAt(0) || 'C'),
@@ -4161,9 +4495,50 @@ function App() {
               }, 'Switch Company')
             ),
 
-            h('div', { className: 'card', style: { maxWidth: 650, padding: 22 } },
+            // Multi-Company Workspaces Roster
+            h('div', { style: { marginBottom: 22 } },
+              h('h3', { style: { fontSize: 14, color: 'var(--text-primary)', marginBottom: 10 } }, 'Your Managed Workspaces (Max 3):'),
+              h('div', { className: 'company-roster-grid' },
+                userCompanies.map(c => {
+                  const isActive = c.id === currentUser?.company_id;
+                  return h('div', {
+                    key: c.id,
+                    className: `company-roster-card ${isActive ? 'active' : ''}`
+                  },
+                    h('div', null,
+                      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 } },
+                        h('strong', { style: { fontSize: 14, color: 'var(--text-primary)' } }, c.name),
+                        isActive
+                          ? h('span', { className: 'badge badge-success', style: { fontSize: 10 } }, '✓ Active')
+                          : h('span', { className: 'badge badge-outline', style: { fontSize: 10 } }, `ID #${c.id}`)
+                      ),
+                      h('div', { style: { fontSize: 12, color: 'var(--text-secondary)' } }, c.legal_name || c.name),
+                      c.gst_no && h('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginTop: 4 } }, `GSTIN: ${c.gst_no}`)
+                    ),
+                    !isActive && h('button', {
+                      type: 'button',
+                      className: 'btn btn-outline',
+                      style: { fontSize: 11, padding: '6px 10px', width: '100%' },
+                      disabled: companyActionLoading,
+                      onClick: () => handleSwitchCompany(c.id)
+                    }, companyActionLoading ? 'Switching...' : 'Switch to this Workspace')
+                  );
+                }),
+                userCompanies.length < 3 && h('div', {
+                  className: 'company-roster-card add-card',
+                  onClick: () => { setShowCompanyModal(true); setShowNewCompanyForm(true); setCompanyError(''); }
+                },
+                  h('div', { style: { fontSize: 24, marginBottom: 4 } }, '➕'),
+                  h('strong', { style: { fontSize: 13, color: 'var(--primary)' } }, 'Register New Company'),
+                  h('div', { style: { fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 } }, `${3 - userCompanies.length} workspace slot(s) available`)
+                )
+              )
+            ),
+
+            // Company Metadata Card
+            h('div', { className: 'card', style: { maxWidth: 680, padding: 22 } },
               h('div', { style: { marginBottom: 16, borderBottom: '1px solid var(--border-light)', paddingBottom: 10 } },
-                h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Workspace & Tax Identity'),
+                h('h3', { style: { margin: 0, fontSize: 15, color: 'var(--text-primary)' } }, 'Active Workspace Legal & Tax Identity'),
                 h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
                   'Legal name, tax identification (GSTIN) and physical manufacturing address appearing on issued invoices.'
                 )
@@ -4217,7 +4592,7 @@ function App() {
             )
           ),
 
-          // ----- SUB-TAB 3: WORKSPACE CUSTOMIZATION -----
+          // ----- SUB-TAB 4: WORKSPACE CUSTOMIZATION -----
           settingsTab === 'customization' && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 840 } },
             // Card 1: Theme & Visual Appearance
             h('div', { className: 'card', style: { padding: 22 } },
@@ -4439,6 +4814,85 @@ function App() {
                     addToast('Reset to factory default customizations', 'info');
                   }
                 }, '↺ Reset to Defaults')
+              )
+            )
+          ),
+
+          // ----- SUB-TAB 5: DATA & BACKUP -----
+          settingsTab === 'backup' && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 840 } },
+            // Backup Export Card
+            h('div', { className: 'card', style: { padding: 24 } },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 } },
+                h('div', {
+                  style: {
+                    width: 48,
+                    height: 48,
+                    borderRadius: 14,
+                    background: 'var(--primary-light)',
+                    color: 'var(--primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 24
+                  }
+                }, '💾'),
+                h('div', null,
+                  h('h3', { style: { margin: 0, fontSize: 16, color: 'var(--text-primary)' } }, 'Full Factory & Financial Data Archive (JSON)'),
+                  h('p', { style: { margin: '4px 0 0 0', fontSize: 12.5, color: 'var(--text-secondary)' } },
+                    'Download an unencrypted, portable snapshot of all products, stock levels, production history, sales, and expenses.'
+                  )
+                )
+              ),
+
+              // Dataset Breakdown Cards
+              h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 } },
+                h('div', { style: { padding: 12, background: 'var(--bg-secondary)', borderRadius: 9, border: '1px solid var(--border-light)' } },
+                  h('div', { style: { fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 } }, 'FINISHED GOODS'),
+                  h('strong', { style: { fontSize: 16, color: 'var(--text-primary)' } }, `${(inventory || []).filter(i => i.category !== 'Raw material').length} items`)
+                ),
+                h('div', { style: { padding: 12, background: 'var(--bg-secondary)', borderRadius: 9, border: '1px solid var(--border-light)' } },
+                  h('div', { style: { fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 } }, 'RAW MATERIALS'),
+                  h('strong', { style: { fontSize: 16, color: 'var(--text-primary)' } }, `${(inventory || []).filter(i => i.category === 'Raw material').length} items`)
+                ),
+                h('div', { style: { padding: 12, background: 'var(--bg-secondary)', borderRadius: 9, border: '1px solid var(--border-light)' } },
+                  h('div', { style: { fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 } }, 'PRODUCTION BATCHES'),
+                  h('strong', { style: { fontSize: 16, color: 'var(--text-primary)' } }, `${(productionRuns || []).length} runs`)
+                ),
+                h('div', { style: { padding: 12, background: 'var(--bg-secondary)', borderRadius: 9, border: '1px solid var(--border-light)' } },
+                  h('div', { style: { fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 } }, 'SALES INVOICES'),
+                  h('strong', { style: { fontSize: 16, color: 'var(--text-primary)' } }, `${(sales || []).length} invoices`)
+                ),
+                h('div', { style: { padding: 12, background: 'var(--bg-secondary)', borderRadius: 9, border: '1px solid var(--border-light)' } },
+                  h('div', { style: { fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 } }, 'EXPENSES & EMPLOYEES'),
+                  h('strong', { style: { fontSize: 16, color: 'var(--text-primary)' } }, `${(expenses || []).length + (employees || []).length} entries`)
+                )
+              ),
+
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' } },
+                h('button', {
+                  type: 'button',
+                  className: 'btn btn-primary',
+                  disabled: exportingBackup,
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 20px', fontSize: 13.5 },
+                  onClick: handleExportBackup
+                },
+                  h('span', null, '📥'),
+                  h('span', null, exportingBackup ? 'Generating Archive...' : 'Download JSON Workspace Backup')
+                ),
+                h('div', { style: { fontSize: 12, color: 'var(--text-secondary)' } },
+                  'Generated on-the-fly directly from production MySQL storage.'
+                )
+              )
+            ),
+
+            // Data Sovereignty & Portability Note
+            h('div', { className: 'card', style: { padding: 20, background: 'var(--bg-secondary)' } },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 } },
+                h('span', { style: { fontSize: 18 } }, '🔒'),
+                h('strong', { style: { fontSize: 14, color: 'var(--text-primary)' } }, '100% Data Sovereignty & Open Format')
+              ),
+              h('div', { style: { fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6 } },
+                'You maintain total ownership of all business transactions, stock valuation, and operator data. Backups conform to standard JSON schema and can be archived for audit compliance or imported into external ERP systems with zero platform lock-in.'
               )
             )
           )

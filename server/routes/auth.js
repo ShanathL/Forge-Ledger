@@ -162,4 +162,45 @@ router.put('/profile', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/auth/change-password
+router.post('/change-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+    if (!currentPassword) {
+      return res.status(400).json({ success: false, error: 'Current password is required' });
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 6 characters long' });
+    }
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ success: false, error: 'New password and confirmation do not match' });
+    }
+
+    await db.changePassword(req.user.id, currentPassword, newPassword);
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+  } catch (err) {
+    res.status(err.status || 400).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/auth/export-backup
+router.get('/export-backup', requireAuth, async (req, res) => {
+  try {
+    const backup = await db.exportWorkspaceBackup(req.user.id, req.user.company_id);
+    const companySlug = (backup.company?.name || 'workspace').toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `forgeledger-backup-${companySlug}-${dateStr}.json`;
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(JSON.stringify(backup, null, 2));
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

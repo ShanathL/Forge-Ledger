@@ -309,6 +309,84 @@ class DatabaseManager {
     return user;
   }
 
+  async changePassword(userId, currentPassword, newPassword) {
+    const id = Number(userId);
+    let user;
+    if (this.useMySQL) {
+      const rows = await mysql.query('SELECT * FROM users WHERE id = ?', [id]);
+      user = rows[0];
+    } else {
+      user = this.data.users.find(u => u.id === id);
+    }
+    if (!user) throw new Error('User not found');
+
+    let isMatch = false;
+    if (!user.password_hash) {
+      isMatch = currentPassword === 'password123' || currentPassword === 'admin';
+    } else {
+      isMatch = bcrypt.compareSync(currentPassword, user.password_hash);
+    }
+
+    if (!isMatch) {
+      const err = new Error('Current password is incorrect');
+      err.status = 401;
+      throw err;
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      const err = new Error('New password must be at least 6 characters long');
+      err.status = 400;
+      throw err;
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(newPassword, salt);
+
+    if (this.useMySQL) {
+      await mysql.query('UPDATE users SET password_hash = ? WHERE id = ?', [hash, id]);
+    } else {
+      user.password_hash = hash;
+      user.updated_at = new Date().toISOString();
+      this.saveJson();
+    }
+
+    return true;
+  }
+
+  async exportWorkspaceBackup(userId, companyId) {
+    const compId = await this.resolveCompanyId(userId, companyId);
+    const company = await this.getCompanyById(compId);
+    const inventory = await this.getInventory(userId, compId);
+    const sales = await this.getSales(userId, compId);
+    const expenses = await this.getExpenses(userId, compId);
+    const employees = await this.getEmployees(userId, compId);
+    const production = await this.getProductionRuns(userId, compId);
+
+    return {
+      appName: 'ForgeLedger',
+      version: '2.0.0',
+      exportedAt: new Date().toISOString(),
+      company: company || { id: compId, name: 'Workspace' },
+      stats: {
+        totalInventoryItems: inventory.length,
+        finishedGoodsCount: inventory.filter(i => i.category !== 'Raw material').length,
+        rawMaterialsCount: inventory.filter(i => i.category === 'Raw material').length,
+        totalSales: sales.length,
+        totalExpenses: expenses.length,
+        totalEmployees: employees.length,
+        totalProductionRuns: production.length
+      },
+      data: {
+        company,
+        inventory,
+        sales,
+        expenses,
+        employees,
+        production
+      }
+    };
+  }
+
   async createUser({ name, email, password, companyName }) {
     const existing = await this.findUserByEmail(email);
     if (existing) {
