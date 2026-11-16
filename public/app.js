@@ -28,7 +28,20 @@ function Icon({ name, size = 17, className = "" }) {
     edit: h('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' }),
     chevronLeft: h('path', { d: 'M15 18l-6-6 6-6' }),
     chevronRight: h('path', { d: 'M9 18l6-6-6-6' }),
-    menu: h('path', { d: 'M3 12h18M3 6h18M3 18h18' })
+    menu: h('path', { d: 'M3 12h18M3 6h18M3 18h18' }),
+    sun: h('g', null,
+      h('circle', { cx: '12', cy: '12', r: '5' }),
+      h('line', { x1: '12', y1: '1', x2: '12', y2: '3' }),
+      h('line', { x1: '12', y1: '21', x2: '12', y2: '23' }),
+      h('line', { x1: '4.22', y1: '4.22', x2: '5.64', y2: '5.64' }),
+      h('line', { x1: '18.36', y1: '18.36', x2: '19.78', y2: '19.78' }),
+      h('line', { x1: '1', y1: '12', x2: '3', y2: '12' }),
+      h('line', { x1: '21', y1: '12', x2: '23', y2: '12' }),
+      h('line', { x1: '4.22', y1: '19.78', x2: '5.64', y2: '18.36' }),
+      h('line', { x1: '18.36', y1: '5.64', x2: '19.78', y2: '4.22' })
+    ),
+    moon: h('path', { d: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' }),
+    user: h('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' })
   };
 
   return h('svg', {
@@ -52,6 +65,25 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('forgeledger_sidebar_collapsed') === 'true'; } catch (_) { return false; }
   });
+  const [darkMode, setDarkMode] = useState(() => {
+    try { return localStorage.getItem('forgeledger_theme') === 'dark'; } catch (_) { return false; }
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+  }, [darkMode]);
+
+  const toggleDarkMode = () => {
+    setDarkMode(prev => {
+      const next = !prev;
+      try { localStorage.setItem('forgeledger_theme', next ? 'dark' : 'light'); } catch (_) {}
+      return next;
+    });
+  };
 
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => {
@@ -382,20 +414,12 @@ function App() {
     );
   }
 
-  return h('div', { className: `app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}` },
+  return h('div', { className: `app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${darkMode ? 'dark-mode' : ''}` },
     // SIDEBAR
     h('aside', { className: `sidebar ${sidebarCollapsed ? 'collapsed' : ''}` },
-      h('div', { className: 'sidebar-brand' },
-        h('div', {
-          className: 'brand-icon',
-          onClick: () => sidebarCollapsed && setSidebarCollapsed(false),
-          style: { cursor: sidebarCollapsed ? 'pointer' : 'default' },
-          title: sidebarCollapsed ? 'Click to expand sidebar' : ''
-        }, 'F'),
-        !sidebarCollapsed && h('div', { className: 'brand-text' },
-          h('h1', null, 'forgeledger'),
-          h('span', null, 'BUSINESS WORKSPACE')
-        ),
+      // Sidebar Header with collapse toggle (Logo moved to top right)
+      h('div', { className: 'sidebar-header' },
+        !sidebarCollapsed && h('div', { className: 'sidebar-title' }, 'NAVIGATION'),
         h('button', {
           className: 'sidebar-toggle-btn',
           onClick: toggleSidebar,
@@ -406,20 +430,7 @@ function App() {
         )
       ),
 
-      // Workspace Pill
-      h('div', {
-        className: 'workspace-selector',
-        title: currentUser?.company?.name || 'Riverton Works',
-        onClick: () => { setActiveTab('settings'); }
-      },
-        h('div', { className: 'workspace-avatar' }, currentUser?.company?.name?.charAt(0) || 'R'),
-        !sidebarCollapsed && h('div', { className: 'workspace-info' },
-          h('div', { className: 'workspace-name' }, currentUser?.company?.name || 'Riverton Works'),
-          h('div', { className: 'workspace-sub' }, 'Current workspace')
-        )
-      ),
-
-      // Navigation Items (Exact matching paper)
+      // Navigation Items (Starts immediately below header)
       h('nav', { className: 'sidebar-nav' },
         !sidebarCollapsed && h('div', { className: 'nav-section-title' }, 'WORKSPACE'),
         [
@@ -445,36 +456,49 @@ function App() {
         )
       ),
 
-      // Sidebar Footer
+      // Sidebar Footer (Company above profile, then separate Account & Logout)
       h('div', { className: 'sidebar-footer' },
-        !sidebarCollapsed && h('div', { className: 'help-box' },
-          h('div', { className: 'help-title' },
-            h(Icon, { name: 'overview', size: 13 }),
-            'Need a hand?'
-          ),
-          h('div', { className: 'help-desc' }, 'Manage your business in one place. ForgeLedger workspace.')
+        // 1. Company / Workspace Selector (Moved to bottom above profile)
+        h('div', {
+          className: 'workspace-selector',
+          title: `Current workspace: ${currentUser?.company?.name || 'Riverton Works'}`,
+          onClick: () => { setActiveTab('settings'); }
+        },
+          h('div', { className: 'workspace-avatar' }, currentUser?.company?.name?.charAt(0) || 'R'),
+          !sidebarCollapsed && h('div', { className: 'workspace-info' },
+            h('div', { className: 'workspace-name' }, currentUser?.company?.name || 'Riverton Works'),
+            h('div', { className: 'workspace-sub' }, 'Company workspace')
+          )
         ),
 
-        // User Profile Card
+        // 2. Separate Account Option
         h('div', {
-          className: 'user-badge',
-          title: `${currentUser?.name || 'Demo User'} (${currentUser?.email || 'demo@forgeledger.local'})`
+          className: `sidebar-account-btn ${activeTab === 'settings' ? 'active' : ''}`,
+          title: `Account: ${currentUser?.name || 'Demo User'} (${currentUser?.email || 'demo@forgeledger.local'})`,
+          onClick: () => { setActiveTab('settings'); }
         },
           h('div', { className: 'user-avatar' }, currentUser?.name?.charAt(0) || 'D'),
-          !sidebarCollapsed && h('div', { className: 'user-details' },
-            h('div', { className: 'user-name' }, currentUser?.name || 'Demo User'),
-            h('div', { className: 'user-email' }, currentUser?.email || 'demo@forgeledger.local')
-          ),
-          h('button', { className: 'logout-btn', onClick: handleLogout, title: 'Sign out' },
-            h(Icon, { name: 'logout', size: 15 })
+          !sidebarCollapsed && h('div', { className: 'account-info' },
+            h('div', { className: 'account-name' }, currentUser?.name || 'Demo User'),
+            h('div', { className: 'account-role' }, 'Account settings')
           )
+        ),
+
+        // 3. Separate Logout Option
+        h('button', {
+          className: 'sidebar-logout-btn',
+          onClick: handleLogout,
+          title: 'Sign out'
+        },
+          h(Icon, { name: 'logout', size: 15 }),
+          !sidebarCollapsed && h('span', null, 'Sign out')
         )
       )
     ),
 
     // MAIN CONTENT AREA
     h('div', { className: 'main-wrapper' },
-      // Top Bar (Clean, no duplicate avatar)
+      // Top Bar (Clean, with Dark mode button & Logo at top right)
       h('header', { className: 'top-header' },
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
           h('button', {
@@ -499,10 +523,25 @@ function App() {
             )
           )
         ),
-        h('div', { className: 'header-status' },
+        h('div', { className: 'top-header-right' },
           h('div', { className: 'status-indicator' },
             h('div', { className: 'status-dot' }),
             'All systems normal'
+          ),
+          h('button', {
+            className: 'theme-toggle-btn',
+            onClick: toggleDarkMode,
+            title: darkMode ? 'Switch to light mode' : 'Switch to dark mode',
+            'aria-label': darkMode ? 'Switch to light mode' : 'Switch to dark mode'
+          },
+            h(Icon, { name: darkMode ? 'sun' : 'moon', size: 16 })
+          ),
+          h('div', { className: 'top-nav-brand' },
+            h('div', { className: 'brand-icon' }, 'F'),
+            h('div', { className: 'brand-text' },
+              h('h1', null, 'forgeledger'),
+              h('span', null, 'BUSINESS WORKSPACE')
+            )
           )
         )
       ),

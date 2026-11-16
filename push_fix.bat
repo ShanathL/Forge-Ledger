@@ -15,7 +15,7 @@ git add .
 
 echo.
 echo Committing fixes...
-git commit -m "Add collapsible sidebar with persisted state and smooth transition"
+git commit -m "Update layout: move logo to top right, add Dark/Light mode toggle, move company to sidebar bottom, separate Account and Logout buttons"
 
 echo.
 echo Pushing to GitHub (origin main)...
