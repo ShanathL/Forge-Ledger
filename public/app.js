@@ -8,6 +8,11 @@ function formatCurrency(amount, currency = '₹') {
   return `${currency}${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  return String(dateStr).split('T')[0];
+}
+
 // Icons (SVG Helpers with consistent strokes)
 function Icon({ name, size = 17, className = "" }) {
   const icons = {
@@ -393,8 +398,8 @@ function RawMaterialsPieChart({ rawMaterials = [], currency = '₹' }) {
         h('div', { className: 'pie-chart-wrap' },
           h('svg', {
             viewBox: '0 0 240 240',
-            width: 230,
-            height: 230,
+            width: 195,
+            height: 195,
             className: 'pie-svg'
           },
             // Track Background
@@ -1530,7 +1535,7 @@ function App() {
                       },
                         h('div', null,
                           h('div', { style: { fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' } }, run.product),
-                          h('div', { style: { fontSize: 11, color: '#64748b', marginTop: 2 } }, `Batch started: ${run.run_date} · Target: ${run.quantity} units`)
+                          h('div', { style: { fontSize: 11, color: '#64748b', marginTop: 2 } }, `Batch started: ${formatDate(run.run_date)} · Target: ${run.quantity} units`)
                         ),
                         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
                           h('span', { className: `badge ${run.status === 'In progress' ? 'badge-info' : 'badge-warning'}` }, run.status),
@@ -1645,7 +1650,7 @@ function App() {
                       h('tr', { key: sale.id },
                         h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600 } }, sale.invoice_no),
                         h('td', null, sale.customer),
-                        h('td', { style: { color: '#64748b' } }, sale.issued_date),
+                        h('td', { style: { color: '#64748b' } }, formatDate(sale.issued_date)),
                         h('td', null,
                           h('span', {
                             className: `badge ${sale.status === 'Paid' ? 'badge-success' : sale.status === 'Overdue' ? 'badge-danger' : 'badge-warning'}`
@@ -1931,7 +1936,7 @@ function App() {
                           h('div', { style: { fontWeight: 600 } }, sale.customer),
                           h('div', { style: { fontSize: 11, color: '#64748b' } }, '9999999999')
                         ),
-                        h('td', { style: { color: '#64748b' } }, sale.issued_date),
+                        h('td', { style: { color: '#64748b' } }, formatDate(sale.issued_date)),
                         h('td', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(Number(sale.amount) / 1.05)),
                         h('td', { style: { fontFamily: 'var(--font-mono)', color: '#64748b' } }, formatCurrency(Number(sale.amount) - (Number(sale.amount) / 1.05))),
                         h('td', null,

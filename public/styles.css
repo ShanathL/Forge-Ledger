@@ -892,8 +892,6 @@ body.dark-mode .header-logout-btn:hover {
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .pie-legend-val {
