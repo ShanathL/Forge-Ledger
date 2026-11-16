@@ -15,7 +15,7 @@ git add .
 
 echo.
 echo Committing fixes...
-git commit -m "Merge sidebar collapse, move logo top-left, move logout top-right, enhance pie chart, add charts across pages, remove redundant settings nav"
+git commit -m "Enlarge inventory pie chart to 230px, add raw materials stock valuation pie chart"
 
 echo.
 echo Pushing to GitHub (origin main)...

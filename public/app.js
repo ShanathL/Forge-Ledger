@@ -94,7 +94,7 @@ function exportToCsv(filename, rows, headerMap) {
   document.body.removeChild(a);
 }
 
-// Enhanced, Highly Visible Inventory Pie / Donut Chart Component
+// Enhanced, Highly Visible Inventory Pie / Donut Chart Component (Enlarged)
 function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹' }) {
   const [hoveredSlice, setHoveredSlice] = useState(null);
   const categoryMap = {};
@@ -128,8 +128,8 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
   }
 
   const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1'];
-  const radius = 62;
-  const circumference = 2 * Math.PI * radius; // ~389.557
+  const radius = 80;
+  const circumference = 2 * Math.PI * radius; // ~502.655
 
   let accumulatedPercent = 0;
   const slices = categories.map((cat, idx) => {
@@ -151,38 +151,38 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
   return h('div', { className: 'inventory-pie-widget enhanced-pie-widget' },
     h('div', { className: 'pie-chart-wrap' },
       h('svg', {
-        viewBox: '0 0 190 190',
-        width: 175,
-        height: 175,
+        viewBox: '0 0 240 240',
+        width: 230,
+        height: 230,
         className: 'pie-svg'
       },
         // Track Background
         h('circle', {
-          cx: 95,
-          cy: 95,
+          cx: 120,
+          cy: 120,
           r: radius,
           fill: 'none',
           stroke: 'rgba(148, 163, 184, 0.16)',
-          strokeWidth: 24
+          strokeWidth: 28
         }),
         // Slices
         slices.map((slice, i) => {
           const isHovered = hoveredSlice === slice.name;
           return h('circle', {
             key: slice.name + i,
-            cx: 95,
-            cy: 95,
+            cx: 120,
+            cy: 120,
             r: radius,
             fill: 'none',
             stroke: slice.color,
-            strokeWidth: isHovered ? 28 : 24,
+            strokeWidth: isHovered ? 34 : 28,
             strokeDasharray: slice.strokeDasharray,
             strokeDashoffset: slice.strokeDashoffset,
-            transform: 'rotate(-90 95 95)',
+            transform: 'rotate(-90 120 120)',
             style: {
               cursor: 'pointer',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              filter: isHovered ? `drop-shadow(0 0 6px ${slice.color})` : 'none',
+              transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+              filter: isHovered ? `drop-shadow(0 0 8px ${slice.color})` : 'none',
               opacity: hoveredSlice && !isHovered ? 0.6 : 1
             },
             onMouseEnter: () => setHoveredSlice(slice.name),
@@ -191,19 +191,19 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
         }),
         // Donut Center Text
         h('text', {
-          x: 95,
-          y: activeSlice ? 90 : 92,
+          x: 120,
+          y: activeSlice ? 112 : 115,
           textAnchor: 'middle',
-          fontSize: activeSlice ? '13px' : '13.5px',
+          fontSize: activeSlice ? '15px' : '16px',
           fontWeight: '800',
           fill: 'currentColor',
           fontFamily: 'var(--font-mono)'
         }, activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)),
         h('text', {
-          x: 95,
-          y: activeSlice ? 107 : 108,
+          x: 120,
+          y: activeSlice ? 133 : 135,
           textAnchor: 'middle',
-          fontSize: '9px',
+          fontSize: '10px',
           fontWeight: '700',
           fill: activeSlice ? activeSlice.color : 'var(--text-muted)',
           letterSpacing: '0.8px'
@@ -218,7 +218,7 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
           className: `pie-legend-row ${isHovered ? 'hovered' : ''}`,
           style: {
             cursor: 'pointer',
-            padding: '7px 11px',
+            padding: '8px 12px',
             borderRadius: 8,
             transition: 'all 0.15s ease',
             background: isHovered ? 'rgba(37, 99, 235, 0.1)' : 'var(--bg-secondary)',
@@ -234,12 +234,167 @@ function InventoryPieChart({ inventory = [], rawMaterials = [], currency = '₹'
             slice.lowStockCount > 0 && h('span', { className: 'badge badge-warning', style: { fontSize: 10, padding: '1px 6px' } }, `${slice.lowStockCount} low stock`)
           ),
           h('div', { style: { display: 'flex', alignItems: 'center', gap: 9 } },
-            h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 } }, formatCurrency(slice.value, currency)),
+            h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13.5 } }, formatCurrency(slice.value, currency)),
             h('span', { className: 'pie-legend-pct', style: { fontWeight: 700, background: slice.color, color: '#fff', padding: '2px 7px', borderRadius: 12, fontSize: 11 } }, `${slice.percent}%`)
           )
         );
       })
     )
+  );
+}
+
+// Raw Materials Stock & Valuation Pie / Donut Chart Component
+function RawMaterialsPieChart({ rawMaterials = [], currency = '₹' }) {
+  const [hoveredSlice, setHoveredSlice] = useState(null);
+
+  let totalVal = 0;
+  const materialList = (rawMaterials || []).map(rm => {
+    const qty = Number(rm.quantity) || 0;
+    const cost = Number(rm.unit_cost) || 0;
+    const val = qty * cost;
+    totalVal += val;
+    return {
+      id: rm.id,
+      name: rm.item_name || 'Material',
+      sku: rm.sku || '',
+      quantity: qty,
+      unit: rm.unit || 'kg',
+      unit_cost: cost,
+      value: val
+    };
+  });
+
+  if (totalVal === 0 && materialList.length > 0) {
+    materialList.forEach(m => m.value = 100);
+    totalVal = materialList.reduce((sum, m) => sum + m.value, 0);
+  }
+
+  const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6', '#f97316'];
+  const radius = 80;
+  const circumference = 2 * Math.PI * radius; // ~502.655
+
+  let accumulatedPercent = 0;
+  const slices = materialList.map((mat, idx) => {
+    const percent = totalVal > 0 ? (mat.value / totalVal) : (1 / (materialList.length || 1));
+    const strokeDash = (percent * circumference);
+    const strokeOffset = (accumulatedPercent * circumference);
+    accumulatedPercent += percent;
+    return {
+      ...mat,
+      percent: Math.round(percent * 100),
+      color: colors[idx % colors.length],
+      strokeDasharray: `${strokeDash} ${circumference}`,
+      strokeDashoffset: -strokeOffset
+    };
+  });
+
+  const activeSlice = hoveredSlice ? slices.find(s => s.name === hoveredSlice) : null;
+
+  return h('div', { className: 'card chart-card', style: { padding: '18px 22px', marginBottom: 20 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+      h('div', null,
+        h('h3', { className: 'card-title' }, 'Raw materials valuation & share'),
+        h('div', { className: 'card-subtitle' }, 'Visual inventory distribution across all raw materials and manufacturing inputs')
+      ),
+      h('span', { className: 'badge badge-neutral' }, `${materialList.length} Material Types`)
+    ),
+    materialList.length === 0 ?
+      h('div', { style: { textAlign: 'center', padding: '30px 20px', color: '#64748b', fontSize: 13 } }, 'No raw materials available to chart. Add a material above to view stock valuation.') :
+      h('div', { className: 'inventory-pie-widget enhanced-pie-widget' },
+        h('div', { className: 'pie-chart-wrap' },
+          h('svg', {
+            viewBox: '0 0 240 240',
+            width: 230,
+            height: 230,
+            className: 'pie-svg'
+          },
+            // Track Background
+            h('circle', {
+              cx: 120,
+              cy: 120,
+              r: radius,
+              fill: 'none',
+              stroke: 'rgba(148, 163, 184, 0.16)',
+              strokeWidth: 28
+            }),
+            // Slices
+            slices.map((slice, i) => {
+              const isHovered = hoveredSlice === slice.name;
+              return h('circle', {
+                key: slice.name + i,
+                cx: 120,
+                cy: 120,
+                r: radius,
+                fill: 'none',
+                stroke: slice.color,
+                strokeWidth: isHovered ? 34 : 28,
+                strokeDasharray: slice.strokeDasharray,
+                strokeDashoffset: slice.strokeDashoffset,
+                transform: 'rotate(-90 120 120)',
+                style: {
+                  cursor: 'pointer',
+                  transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                  filter: isHovered ? `drop-shadow(0 0 8px ${slice.color})` : 'none',
+                  opacity: hoveredSlice && !isHovered ? 0.6 : 1
+                },
+                onMouseEnter: () => setHoveredSlice(slice.name),
+                onMouseLeave: () => setHoveredSlice(null)
+              });
+            }),
+            // Donut Center Text
+            h('text', {
+              x: 120,
+              y: activeSlice ? 112 : 115,
+              textAnchor: 'middle',
+              fontSize: activeSlice ? '15px' : '16px',
+              fontWeight: '800',
+              fill: 'currentColor',
+              fontFamily: 'var(--font-mono)'
+            }, activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)),
+            h('text', {
+              x: 120,
+              y: activeSlice ? 133 : 135,
+              textAnchor: 'middle',
+              fontSize: '10px',
+              fontWeight: '700',
+              fill: activeSlice ? activeSlice.color : 'var(--text-muted)',
+              letterSpacing: '0.8px'
+            }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'TOTAL RM VALUATION')
+          )
+        ),
+        h('div', { className: 'pie-legend' },
+          slices.map(slice => {
+            const isHovered = hoveredSlice === slice.name;
+            return h('div', {
+              key: slice.name,
+              className: `pie-legend-row ${isHovered ? 'hovered' : ''}`,
+              style: {
+                cursor: 'pointer',
+                padding: '8px 12px',
+                borderRadius: 8,
+                transition: 'all 0.15s ease',
+                background: isHovered ? 'rgba(37, 99, 235, 0.1)' : 'var(--bg-secondary)',
+                marginBottom: 6,
+                border: isHovered ? `1px solid ${slice.color}` : '1px solid transparent'
+              },
+              onMouseEnter: () => setHoveredSlice(slice.name),
+              onMouseLeave: () => setHoveredSlice(null)
+            },
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 9 } },
+                h('span', { className: 'pie-legend-dot', style: { backgroundColor: slice.color, width: 10, height: 10, borderRadius: '50%' } }),
+                h('div', null,
+                  h('div', { className: 'pie-legend-name', style: { fontWeight: 600, fontSize: 13 } }, slice.name),
+                  h('div', { style: { fontSize: 11, color: '#64748b' } }, `${slice.quantity} ${slice.unit} • ${slice.sku}`)
+                )
+              ),
+              h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13.5 } }, formatCurrency(slice.value, currency)),
+                h('span', { className: 'pie-legend-pct', style: { fontWeight: 700, background: slice.color, color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 11 } }, `${slice.percent}%`)
+              )
+            );
+          })
+        )
+      )
   );
 }
 
@@ -1665,6 +1820,9 @@ function App() {
               h('button', { type: 'submit', className: 'btn btn-primary', style: { height: 38 } }, 'Add material')
             )
           ),
+
+          // Raw Materials Stock & Valuation Pie Chart
+          h(RawMaterialsPieChart, { rawMaterials, currency: '₹' }),
 
           // Raw Material Table (Fig. 7)
           h('div', { className: 'card' },
