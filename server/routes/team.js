@@ -60,6 +60,19 @@ const ROLE_PERMISSIONS = {
   }
 };
 
+// Middleware: verify user has admin / owner permissions to alter roles or roster
+function requireAdmin(req, res, next) {
+  const role = String(req.user?.role || '').toLowerCase();
+  const isAdmin = role.includes('owner') || role.includes('admin') || role.includes('manager');
+  if (!isAdmin) {
+    return res.status(403).json({
+      success: false,
+      error: 'Permission denied: Only Workspace Admins / Owners can assign roles or modify the roster.'
+    });
+  }
+  next();
+}
+
 // GET /api/team - Fetch all members of active company
 router.get('/', requireAuth, async (req, res) => {
   try {
@@ -76,8 +89,8 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/team/invite - Invite new colleague to company
-router.post('/invite', requireAuth, async (req, res) => {
+// POST /api/team/invite - Invite new colleague to company (Admin only)
+router.post('/invite', requireAuth, requireAdmin, async (req, res) => {
   try {
     const companyId = req.user.company_id || 1;
     const { name, email, role, department, phone } = req.body;
@@ -107,8 +120,8 @@ router.post('/invite', requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/team/:id/role - Update colleague role or department
-router.patch('/:id/role', requireAuth, async (req, res) => {
+// PATCH /api/team/:id/role - Update colleague role or department (Admin only)
+router.patch('/:id/role', requireAuth, requireAdmin, async (req, res) => {
   try {
     const companyId = req.user.company_id || 1;
     const { role, department } = req.body;
@@ -128,8 +141,8 @@ router.patch('/:id/role', requireAuth, async (req, res) => {
   }
 });
 
-// DELETE /api/team/:id - Remove colleague from company
-router.delete('/:id', requireAuth, async (req, res) => {
+// DELETE /api/team/:id - Remove colleague from company (Admin only)
+router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const companyId = req.user.company_id || 1;
     await db.removeTeamMember(companyId, req.params.id);

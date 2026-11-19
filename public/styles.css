@@ -4489,3 +4489,83 @@ body:not(.dark-mode) .label-preview-panel {
     page-break-inside: avoid;
   }
 }
+
+/* Locked Role Badge for Non-Admin Staff Members */
+.role-selector-locked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: default;
+  white-space: nowrap;
+  opacity: 0.88;
+}
+
+body.dark-mode .role-selector-locked-badge {
+  background: #1e293b;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Admin Role Assignment Controls inside Dropdown */
+.role-dropdown-admin-section {
+  border-top: 1px solid var(--border-light);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+.role-policy-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.14s ease;
+  margin-bottom: 6px;
+}
+
+.role-policy-toggle-row:hover {
+  background: var(--bg-hover);
+}
+
+.role-dropdown-action-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid var(--brand-primary, #3b82f6);
+  background: var(--brand-primary, #3b82f6);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  margin-top: 5px;
+}
+
+.role-dropdown-action-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.role-dropdown-action-btn.secondary {
+  background: transparent;
+  color: var(--text-main);
+  border-color: var(--border-light);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.role-dropdown-action-btn.secondary:hover {
+  background: var(--bg-hover);
+  color: var(--brand-primary, #3b82f6);
+}

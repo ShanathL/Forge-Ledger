@@ -3042,6 +3042,195 @@ function InviteTeamModal({ isOpen, onClose, onInvite }) {
   );
 }
 
+// ============================================================
+// ASSIGN & MANAGE ROLES MODAL (ADMIN ONLY)
+// ============================================================
+function AssignRoleModal({ isOpen, onClose, teamMembers, onUpdateRole, onInviteMember }) {
+  if (!isOpen) return null;
+
+  const [mode, setMode] = useState('existing'); // 'existing' or 'new'
+  const [selectedMemberId, setSelectedMemberId] = useState(() => teamMembers[0]?.id || '');
+  const [selectedRole, setSelectedRole] = useState('operator');
+  const [department, setDepartment] = useState('Shop Floor & Machining');
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // When member changes, sync role & department
+  useEffect(() => {
+    if (mode === 'existing' && selectedMemberId) {
+      const m = teamMembers.find(item => String(item.id) === String(selectedMemberId));
+      if (m) {
+        setSelectedRole(normalizeRole(m.role));
+        if (m.department) setDepartment(m.department);
+      }
+    }
+  }, [selectedMemberId, mode, teamMembers]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      if (mode === 'existing') {
+        if (!selectedMemberId) throw new Error('Please select a team member');
+        await onUpdateRole(selectedMemberId, selectedRole, department);
+      } else {
+        if (!newName.trim()) throw new Error('Colleague full name is required');
+        if (!newEmail.includes('@')) throw new Error('A valid email address is required');
+        await onInviteMember({ name: newName, email: newEmail, role: selectedRole, department });
+      }
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to assign role');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const roleCfg = ROLE_CONFIGS[selectedRole] || ROLE_CONFIGS.operator;
+
+  return h('div', { className: 'modal-overlay', onClick: onClose },
+    h('div', { className: 'modal-card', style: { maxWidth: 540 }, onClick: e => e.stopPropagation() },
+      h('div', { className: 'modal-header' },
+        h('div', null,
+          h('h3', { style: { margin: 0, fontSize: 16 } }, '🛡️ Assign & Add Roles'),
+          h('div', { style: { fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 } },
+            'Admin Governance: Assign operational roles and module permissions to coworkers'
+          )
+        ),
+        h('button', { className: 'modal-close', onClick: onClose }, '✕')
+      ),
+      h('div', { style: { display: 'flex', gap: 6, padding: '12px 20px', borderBottom: '1px solid var(--border-light)' } },
+        h('button', {
+          type: 'button',
+          className: `btn btn-sm ${mode === 'existing' ? 'btn-primary' : 'btn-outline'}`,
+          onClick: () => setMode('existing')
+        }, '👤 Assign to Existing Member'),
+        h('button', {
+          type: 'button',
+          className: `btn btn-sm ${mode === 'new' ? 'btn-primary' : 'btn-outline'}`,
+          onClick: () => setMode('new')
+        }, '➕ Add & Assign New Member')
+      ),
+      h('form', { onSubmit: handleSubmit },
+        h('div', { className: 'modal-body', style: { padding: '18px 20px' } },
+          error && h('div', { className: 'alert alert-danger', style: { marginBottom: 14 } }, error),
+
+          mode === 'existing' ? h('div', { className: 'form-group' },
+            h('label', null, 'Select Team Member'),
+            h('select', {
+              className: 'form-input',
+              value: selectedMemberId,
+              onChange: e => setSelectedMemberId(e.target.value)
+            },
+              teamMembers.map(m =>
+                h('option', { key: m.id, value: m.id }, `${m.name} (${m.role}) — ${m.email}`)
+              )
+            )
+          ) : [
+            h('div', { key: 'name', className: 'form-group' },
+              h('label', null, 'Colleague Full Name'),
+              h('input', {
+                className: 'form-input',
+                value: newName,
+                placeholder: 'e.g. Ramesh Patel',
+                required: true,
+                onChange: e => setNewName(e.target.value)
+              })
+            ),
+            h('div', { key: 'email', className: 'form-group' },
+              h('label', null, 'Work Email Address'),
+              h('input', {
+                type: 'email',
+                className: 'form-input',
+                value: newEmail,
+                placeholder: 'e.g. ramesh@rivertonworks.local',
+                required: true,
+                onChange: e => setNewEmail(e.target.value)
+              })
+            )
+          ],
+
+          h('div', { className: 'form-group' },
+            h('label', null, 'Assigned Role & Access Level'),
+            h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginTop: 4 } },
+              Object.values(ROLE_CONFIGS).map(rc => {
+                const isSelected = selectedRole === rc.key;
+                return h('div', {
+                  key: rc.key,
+                  style: {
+                    border: `1.5px solid ${isSelected ? rc.color : 'var(--border-light)'}`,
+                    borderRadius: 8,
+                    padding: '9px 12px',
+                    cursor: 'pointer',
+                    background: isSelected ? `${rc.color}15` : 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.15s ease'
+                  },
+                  onClick: () => setSelectedRole(rc.key)
+                },
+                  h('span', { style: { fontSize: 18 } }, rc.icon),
+                  h('div', { style: { flex: 1, minWidth: 0 } },
+                    h('div', { style: { fontWeight: 700, fontSize: 12, color: 'var(--text-main)' } }, rc.name.split(' ')[0]),
+                    h('div', { style: { fontSize: 10, color: 'var(--text-muted)' } }, rc.key)
+                  ),
+                  isSelected && h('span', { style: { color: rc.color, fontWeight: 800 } }, '✓')
+                );
+              })
+            )
+          ),
+
+          // Role Permission Summary Card
+          h('div', {
+            style: {
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-light)',
+              borderRadius: 8,
+              padding: 10,
+              fontSize: 11,
+              marginTop: 10
+            }
+          },
+            h('div', { style: { fontWeight: 700, color: 'var(--text-main)', marginBottom: 4 } },
+              `${roleCfg.icon} ${roleCfg.name} Permissions:`
+            ),
+            h('div', { style: { color: 'var(--text-muted)', lineHeight: 1.4 } }, roleCfg.summary),
+            h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 } },
+              roleCfg.canViewFinancials ? h('span', { className: 'badge badge-success' }, '✓ View Financials') : h('span', { className: 'badge' }, '✕ Financials Masked'),
+              roleCfg.canEditInventory ? h('span', { className: 'badge badge-success' }, '✓ Stock Inventory') : null,
+              roleCfg.canEditProduction ? h('span', { className: 'badge badge-success' }, '✓ Shop Floor Batches') : null,
+              roleCfg.canDisbursePayroll ? h('span', { className: 'badge badge-success' }, '✓ Payroll Access') : null
+            )
+          ),
+
+          h('div', { className: 'form-group', style: { marginTop: 14 } },
+            h('label', null, 'Department / Machine Line'),
+            h('select', {
+              className: 'form-input',
+              value: department,
+              onChange: e => setDepartment(e.target.value)
+            },
+              ['Shop Floor & Machining', 'Warehouse & Logistics', 'Accounts & Tax Compliance', 'Quality Control & Metrology', 'Plant Operations & Admin'].map(d =>
+                h('option', { key: d, value: d }, d)
+              )
+            )
+          )
+        ),
+        h('div', { className: 'modal-footer' },
+          h('button', { type: 'button', className: 'btn btn-outline', onClick: onClose }, 'Cancel'),
+          h('button', { type: 'submit', className: 'btn btn-primary', disabled: saving },
+            saving ? 'Saving...' : (mode === 'existing' ? 'Save Role Assignment' : 'Invite & Assign Role')
+          )
+        )
+      )
+    )
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -3068,6 +3257,15 @@ function App() {
     try { return localStorage.getItem('forgeledger_simulated_role') || null; } catch (_) { return null; }
   });
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [showAssignRoleModal, setShowAssignRoleModal] = useState(false);
+
+  // Policy: Admin-Assigned Roles (true = locked to admin assignments; false = open simulation)
+  const [adminOnlyRoles, setAdminOnlyRoles] = useState(() => {
+    try {
+      const stored = localStorage.getItem('forgeledger_admin_only_roles');
+      return stored !== null ? stored === 'true' : true;
+    } catch (_) { return true; }
+  });
 
   // Label Studio & Scanner Modals state
   const [showLabelModal, setShowLabelModal] = useState(false);
@@ -3251,6 +3449,7 @@ function App() {
         setShowRoleDropdown(false);
         setShowScannerModal(false);
         setShowLabelModal(false);
+        setShowAssignRoleModal(false);
         return;
       }
 
@@ -3685,10 +3884,26 @@ function App() {
   }
 
   // Role Computation and Switching
-  const effectiveRole = simulatedRole || (currentUser?.role ? normalizeRole(currentUser.role) : 'owner');
+  const isActualAdmin = !currentUser ||
+    ['owner', 'admin', 'plant manager', 'manager'].some(r => String(currentUser.role || '').toLowerCase().includes(r));
+  const canChangeRole = !adminOnlyRoles || isActualAdmin;
+
+  const effectiveRole = (canChangeRole ? simulatedRole : null) || (currentUser?.role ? normalizeRole(currentUser.role) : 'owner');
   const roleConfig = ROLE_CONFIGS[effectiveRole] || ROLE_CONFIGS.owner;
 
+  const handleToggleAdminOnlyRoles = (val) => {
+    setAdminOnlyRoles(val);
+    try {
+      localStorage.setItem('forgeledger_admin_only_roles', String(val));
+    } catch (_) {}
+    addToast(val ? '🛡️ Policy active: Only Admins can assign roles' : '🔓 Policy updated: Open simulation mode enabled', 'info');
+  };
+
   const handleSwitchSimulatedRole = (r) => {
+    if (!canChangeRole) {
+      addToast('Role changes are locked by your Workspace Admin.', 'warning');
+      return;
+    }
     setSimulatedRole(r);
     try {
       if (r) localStorage.setItem('forgeledger_simulated_role', r);
@@ -3717,10 +3932,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'settings' && settingsTab === 'team') {
+    if ((activeTab === 'settings' && settingsTab === 'team') || showAssignRoleModal) {
       loadTeamMembers();
     }
-  }, [activeTab, settingsTab, loadTeamMembers]);
+  }, [activeTab, settingsTab, showAssignRoleModal, loadTeamMembers]);
 
   const handleUpdateStockFromScanner = async (itemId, newQuantity, isRaw) => {
     const res = await fetch(`/api/inventory/${itemId}`, {
@@ -4399,49 +4614,85 @@ function App() {
             )
           ),
 
-          // Role Switcher / Simulator Dropdown Pill
-          h('div', { className: 'role-selector-dropdown-wrap' },
-            h('button', {
-              type: 'button',
-              className: `role-selector-trigger ${simulatedRole ? 'is-simulated' : ''}`,
-              onClick: (e) => { e.stopPropagation(); setShowRoleDropdown(prev => !prev); },
-              title: 'Simulate Staff Views: Owner, Operator, Clerk, Accountant'
+          // Role Switcher / Simulator Dropdown Pill or Locked Staff Badge
+          canChangeRole ?
+            h('div', { className: 'role-selector-dropdown-wrap' },
+              h('button', {
+                type: 'button',
+                className: `role-selector-trigger ${simulatedRole ? 'is-simulated' : ''}`,
+                onClick: (e) => { e.stopPropagation(); setShowRoleDropdown(prev => !prev); },
+                title: 'Admin Governance: Simulate Views & Assign Member Roles'
+              },
+                h('span', { style: { fontSize: 13 } }, roleConfig.icon),
+                h('span', { className: 'role-trigger-label' }, effectiveRole === 'owner' ? 'Owner' : effectiveRole === 'operator' ? 'Operator' : effectiveRole === 'clerk' ? 'Clerk' : 'Accountant'),
+                simulatedRole && h('span', { className: 'role-sim-tag' }, 'SIM'),
+                h('span', { style: { fontSize: 9, opacity: 0.7, marginLeft: 2 } }, '▼')
+              ),
+              showRoleDropdown && h('div', {
+                className: 'role-dropdown-menu',
+                onClick: e => e.stopPropagation()
+              },
+                h('div', { className: 'role-dropdown-header' }, 'SIMULATE ROLE VIEW (ADMIN)'),
+                [
+                  { key: 'owner', label: 'Plant Owner / Admin', icon: '👑', desc: 'Full unrestricted governance' },
+                  { key: 'operator', label: 'Shop Floor Operator', icon: '⚙️', desc: 'Production queue & materials only' },
+                  { key: 'clerk', label: 'Warehouse Clerk', icon: '📦', desc: 'Stock inventory & barcode scanning' },
+                  { key: 'accountant', label: 'Accountant & Tax', icon: '📊', desc: 'Invoices, expenses & payroll' }
+                ].map(r =>
+                  h('button', {
+                    key: r.key,
+                    type: 'button',
+                    className: `role-dropdown-item ${effectiveRole === r.key ? 'active' : ''}`,
+                    onClick: () => {
+                      handleSwitchSimulatedRole(r.key === 'owner' ? null : r.key);
+                      setShowRoleDropdown(false);
+                    }
+                  },
+                    h('span', { style: { fontSize: 16 } }, r.icon),
+                    h('div', { style: { textAlign: 'left', flex: 1 } },
+                      h('div', { style: { fontWeight: 700, fontSize: 12 } }, r.label),
+                      h('div', { style: { fontSize: 10.5, opacity: 0.75 } }, r.desc)
+                    ),
+                    effectiveRole === r.key && h('span', { style: { color: '#38bdf8', fontWeight: 800 } }, '✓')
+                  )
+                ),
+
+                // Admin Role Management Controls
+                h('div', { className: 'role-dropdown-admin-section' },
+                  h('div', { className: 'role-dropdown-header', style: { marginTop: 6 } }, 'ROLE ASSIGNMENT POLICY'),
+                  h('div', {
+                    className: 'role-policy-toggle-row',
+                    onClick: () => handleToggleAdminOnlyRoles(!adminOnlyRoles),
+                    title: 'Toggle whether only Admins can assign roles or allow open simulation'
+                  },
+                    h('div', null,
+                      h('div', { style: { fontSize: 11.5, fontWeight: 700, color: 'var(--text-main)' } }, '🛡️ Admin-Only Roles'),
+                      h('div', { style: { fontSize: 10, color: 'var(--text-muted)' } }, adminOnlyRoles ? 'Staff role changes locked' : 'Open simulation active')
+                    ),
+                    h('span', { className: `badge ${adminOnlyRoles ? 'badge-success' : 'badge-warning'}` }, adminOnlyRoles ? 'Enforced' : 'Open')
+                  ),
+                  h('button', {
+                    type: 'button',
+                    className: 'role-dropdown-action-btn',
+                    onClick: () => { setShowRoleDropdown(false); setShowAssignRoleModal(true); }
+                  }, '➕ Assign / Add Member Role'),
+                  h('button', {
+                    type: 'button',
+                    className: 'role-dropdown-action-btn secondary',
+                    onClick: () => { setShowRoleDropdown(false); setActiveTab('settings'); setSettingsTab('team'); }
+                  }, '👥 Manage Team Roster & Roles →')
+                )
+              )
+            ) :
+            // Locked Role Badge for Staff Members
+            h('div', {
+              className: 'role-selector-locked-badge',
+              title: `Assigned Role: ${roleConfig.name} · Role assigned by Workspace Admin. Contact your admin to request permission changes.`
             },
               h('span', { style: { fontSize: 13 } }, roleConfig.icon),
               h('span', { className: 'role-trigger-label' }, effectiveRole === 'owner' ? 'Owner' : effectiveRole === 'operator' ? 'Operator' : effectiveRole === 'clerk' ? 'Clerk' : 'Accountant'),
-              simulatedRole && h('span', { className: 'role-sim-tag' }, 'SIM'),
-              h('span', { style: { fontSize: 9, opacity: 0.7, marginLeft: 2 } }, '▼')
+              h('span', { style: { fontSize: 10, opacity: 0.75, marginLeft: 2 } }, '🔒')
             ),
-            showRoleDropdown && h('div', {
-              className: 'role-dropdown-menu',
-              onClick: e => e.stopPropagation()
-            },
-              h('div', { className: 'role-dropdown-header' }, 'SIMULATE ROLE VIEW'),
-              [
-                { key: 'owner', label: 'Plant Owner / Admin', icon: '👑', desc: 'Full unrestricted governance' },
-                { key: 'operator', label: 'Shop Floor Operator', icon: '⚙️', desc: 'Production queue & materials only' },
-                { key: 'clerk', label: 'Warehouse Clerk', icon: '📦', desc: 'Stock inventory & barcode scanning' },
-                { key: 'accountant', label: 'Accountant & Tax', icon: '📊', desc: 'Invoices, expenses & payroll' }
-              ].map(r =>
-                h('button', {
-                  key: r.key,
-                  type: 'button',
-                  className: `role-dropdown-item ${effectiveRole === r.key ? 'active' : ''}`,
-                  onClick: () => {
-                    handleSwitchSimulatedRole(r.key === 'owner' ? null : r.key);
-                    setShowRoleDropdown(false);
-                  }
-                },
-                  h('span', { style: { fontSize: 16 } }, r.icon),
-                  h('div', { style: { textAlign: 'left', flex: 1 } },
-                    h('div', { style: { fontWeight: 700, fontSize: 12 } }, r.label),
-                    h('div', { style: { fontSize: 10.5, opacity: 0.75 } }, r.desc)
-                  ),
-                  effectiveRole === r.key && h('span', { style: { color: '#38bdf8', fontWeight: 800 } }, '✓')
-                )
-              )
-            )
-          ),
 
           // Universal Search & Command Palette Trigger Button (Ctrl+K)
           h('button', {
@@ -4499,8 +4750,8 @@ function App() {
         )
       ),
 
-      // Active Role Simulation Notice Banner
-      simulatedRole && h('div', { className: 'role-sim-banner' },
+      // Active Role Simulation Notice Banner (Only for Admins)
+      simulatedRole && isActualAdmin && h('div', { className: 'role-sim-banner' },
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           h('span', null, '👁️'),
           h('span', null,
@@ -6758,48 +7009,105 @@ function App() {
 
           // ----- SUB-TAB 6: TEAM COLLABORATION & RBAC ROLES -----
           settingsTab === 'team' && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 980 } },
+            // Role Governance & Assignment Policy Card
+            h('div', { className: 'card', style: { padding: 22 } },
+              h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 } },
+                h('div', null,
+                  h('h3', { className: 'card-title', style: { margin: 0, display: 'flex', alignItems: 'center', gap: 8 } },
+                    h('span', null, '🛡️'),
+                    'Role Governance & Assignment Policy'
+                  ),
+                  h('p', { className: 'card-subtitle', style: { margin: 0, marginTop: 4 } },
+                    'Control whether roles are strictly assigned by Workspace Admins or open for staff testing.'
+                  )
+                ),
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                  h('button', {
+                    type: 'button',
+                    className: 'btn btn-primary',
+                    style: { fontSize: 12, padding: '7px 14px' },
+                    onClick: () => setShowAssignRoleModal(true)
+                  }, '➕ Add / Assign Role'),
+                  h('label', {
+                    style: {
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                      background: adminOnlyRoles ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                      border: `1px solid ${adminOnlyRoles ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                      padding: '6px 12px',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: adminOnlyRoles ? '#10b981' : '#f59e0b'
+                    }
+                  },
+                    h('input', {
+                      type: 'checkbox',
+                      checked: adminOnlyRoles,
+                      onChange: e => handleToggleAdminOnlyRoles(e.target.checked),
+                      style: { cursor: 'pointer' }
+                    }),
+                    adminOnlyRoles ? '🛡️ Admin-Only Role Assignment (Enforced)' : '🔓 Open Role Simulation (Demo Mode)'
+                  )
+                )
+              ),
+              h('div', { style: { marginTop: 12, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 } },
+                adminOnlyRoles ?
+                  '✓ Role changes are locked to Workspace Admins. Non-admin staff and factory personnel cannot switch or escalate roles; they only execute the permissions assigned in the roster.' :
+                  '⚠️ Open Demonstration Mode: Any logged-in coworker can switch roles using the topbar dropdown to preview the user interface for different job titles.'
+              )
+            ),
+
             // Interactive Role Simulator Card
             h('div', { className: 'card', style: { padding: 22 } },
               h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
                 h('div', null,
-                  h('h3', { className: 'card-title', style: { margin: 0 } }, '🎭 Interactive Role Simulator'),
+                  h('h3', { className: 'card-title', style: { margin: 0 } }, '🎭 Interactive Role Simulator (Admin Preview)'),
                   h('p', { className: 'card-subtitle', style: { margin: 0, marginTop: 4 } },
-                    'Experience ForgeLedger through the perspective of different plant personnel. Switch views instantly to test access restrictions.'
+                    canChangeRole ?
+                      'Experience ForgeLedger through the perspective of different plant personnel. Switch views instantly to test access restrictions.' :
+                      'Role simulation is locked to Workspace Admins. Your active role is managed by your organization administrator.'
                   )
                 ),
-                simulatedRole && h('button', {
+                simulatedRole && canChangeRole && h('button', {
                   className: 'btn btn-outline',
                   style: { fontSize: 11.5, padding: '4px 10px' },
                   onClick: () => handleSwitchSimulatedRole(null)
                 }, '👑 Reset to Owner View')
               ),
 
-              h('div', { className: 'team-roles-sim-grid' },
-                Object.values(ROLE_CONFIGS).map(rc => {
-                  const isActive = effectiveRole === rc.key;
-                  return h('div', {
-                    key: rc.key,
-                    className: `role-card-item ${isActive ? 'active-sim' : ''}`
-                  },
-                    h('div', null,
-                      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 } },
-                        h('span', { style: { fontSize: 24 } }, rc.icon),
-                        h('span', { className: `role-badge ${rc.badgeClass}` }, rc.key)
+              canChangeRole ?
+                h('div', { className: 'team-roles-sim-grid' },
+                  Object.values(ROLE_CONFIGS).map(rc => {
+                    const isActive = effectiveRole === rc.key;
+                    return h('div', {
+                      key: rc.key,
+                      className: `role-card-item ${isActive ? 'active-sim' : ''}`
+                    },
+                      h('div', null,
+                        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 } },
+                          h('span', { style: { fontSize: 24 } }, rc.icon),
+                          h('span', { className: `role-badge ${rc.badgeClass}` }, rc.key)
+                        ),
+                        h('h4', { style: { fontSize: 14, fontWeight: 700, margin: '4px 0', color: 'var(--text-main)' } }, rc.name),
+                        h('p', { style: { fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.45, margin: 0, minHeight: 48 } }, rc.summary)
                       ),
-                      h('h4', { style: { fontSize: 14, fontWeight: 700, margin: '4px 0', color: 'var(--text-main)' } }, rc.name),
-                      h('p', { style: { fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.45, margin: 0, minHeight: 48 } }, rc.summary)
-                    ),
-                    h('div', { style: { marginTop: 14 } },
-                      h('button', {
-                        type: 'button',
-                        className: `btn ${isActive ? 'btn-primary' : 'btn-outline'}`,
-                        style: { width: '100%', padding: '6px 10px', fontSize: 11.5, fontWeight: 700 },
-                        onClick: () => handleSwitchSimulatedRole(rc.key)
-                      }, isActive ? '✓ Active View' : `Simulate ${rc.name.split(' ')[0]}`)
-                    )
-                  );
-                })
-              )
+                      h('div', { style: { marginTop: 14 } },
+                        h('button', {
+                          type: 'button',
+                          className: `btn ${isActive ? 'btn-primary' : 'btn-outline'}`,
+                          style: { width: '100%', padding: '6px 10px', fontSize: 11.5, fontWeight: 700 },
+                          onClick: () => handleSwitchSimulatedRole(rc.key)
+                        }, isActive ? '✓ Active View' : `Simulate ${rc.name.split(' ')[0]}`)
+                      )
+                    );
+                  })
+                ) :
+                h('div', { className: 'alert alert-info', style: { margin: 0 } },
+                  `🔒 Role simulation is restricted. Your account is currently assigned to ${roleConfig.icon} ${roleConfig.name} by your Workspace Admin.`
+                )
             ),
 
             // Team Roster Table
@@ -6811,10 +7119,17 @@ function App() {
                     'Manage authorized coworkers, factory operators, and assign role-based permissions.'
                   )
                 ),
-                h('button', {
-                  className: 'btn btn-primary',
-                  onClick: () => setShowInviteModal(true)
-                }, '+ Invite Team Member')
+                h('div', { style: { display: 'flex', gap: 8 } },
+                  h('button', {
+                    type: 'button',
+                    className: 'btn btn-outline',
+                    onClick: () => setShowAssignRoleModal(true)
+                  }, '➕ Add / Assign Role'),
+                  h('button', {
+                    className: 'btn btn-primary',
+                    onClick: () => setShowInviteModal(true)
+                  }, '+ Invite Team Member')
+                )
               ),
 
               teamLoading ?
@@ -8119,6 +8434,15 @@ function App() {
       isOpen: showInviteModal,
       onClose: () => setShowInviteModal(false),
       onInvite: handleInviteTeamMember
+    }),
+
+    // Assign & Add Role Modal (Admin Only)
+    h(AssignRoleModal, {
+      isOpen: showAssignRoleModal,
+      onClose: () => setShowAssignRoleModal(false),
+      teamMembers: teamMembers,
+      onUpdateRole: handleUpdateMemberRole,
+      onInviteMember: handleInviteTeamMember
     })
   );
 }
