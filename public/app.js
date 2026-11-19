@@ -609,7 +609,7 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory,
           fontWeight: '800',
           className: 'pie-center-val',
           fontFamily: 'var(--font-mono)'
-        }, canViewFinancials ? (activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)) : (activeSlice ? `%` : ` units`)),
+        }, canViewFinancials ? (activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)) : (activeSlice ? (activeSlice.percent + '%') : (finishedUnits + ' units'))),
         h('text', {
           x: 120,
           y: activeSlice ? 133 : 135,
@@ -619,7 +619,7 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory,
           className: activeSlice ? '' : 'pie-center-label',
           style: activeSlice ? { fill: activeSlice.color } : undefined,
           letterSpacing: '0.8px'
-        }, canViewFinancials ? (activeSlice ? ` (%)` : 'FACTORY WEALTH') : (activeSlice ? `` : 'WAREHOUSE STOCK'))
+        }, canViewFinancials ? (activeSlice ? (activeSlice.name.toUpperCase() + ' (' + activeSlice.percent + '%)') : 'FACTORY WEALTH') : (activeSlice ? activeSlice.name.toUpperCase() : 'WAREHOUSE STOCK'))
       )
     ),
     h('div', { className: 'pie-legend' },
@@ -664,15 +664,15 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory,
 }
 
 // Finished Goods Product Line & Profit Margin Chart Component
-function FinishedGoodsChart({ finishedGoods = [], currency = '₹' }) {
+function FinishedGoodsChart({ finishedGoods = [], currency = '₹', canViewFinancials = true }) {
   const totalVal = (finishedGoods || []).reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0), 0);
   const totalUnits = (finishedGoods || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 
   return h('div', { className: 'card chart-card', style: { padding: '18px 22px', marginBottom: 20 } },
     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
       h('div', null,
-        h('h3', { className: 'card-title' }, 'Finished Goods Stock & Profit Margins'),
-        h('div', { className: 'card-subtitle' }, 'Unit cost, retail selling value, and ready inventory across product lines')
+        h('h3', { className: 'card-title' }, canViewFinancials ? 'Finished Goods Stock & Profit Margins' : 'Finished Goods Stock Distribution'),
+        h('div', { className: 'card-subtitle' }, canViewFinancials ? 'Unit cost, retail selling value, and ready inventory across product lines' : 'Physical ready inventory across finished product lines')
       ),
       h('span', { className: 'badge badge-neutral' }, `${finishedGoods.length} Product Line(s) · ${totalUnits} Units Total`)
     ),
@@ -705,8 +705,8 @@ function FinishedGoodsChart({ finishedGoods = [], currency = '₹' }) {
                 h('span', { className: 'badge badge-success', style: { marginLeft: 8, fontSize: 10 } }, `${qty} ${item.unit || 'units'} in stock`)
               ),
               h('div', { style: { textAlign: 'right' } },
-                h('div', { style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 } }, formatCurrency(lineVal, currency)),
-                h('div', { style: { fontSize: 11, color: '#64748b' } }, `Selling Value: ${formatCurrency(lineSellVal, currency)} (+30% markup)`)
+                h('div', { style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 } }, canViewFinancials ? formatCurrency(lineVal, currency) : '₹ ••••'),
+                h('div', { style: { fontSize: 11, color: '#64748b' } }, canViewFinancials ? ('Selling Value: ' + formatCurrency(lineSellVal, currency) + ' (+30% markup)') : (pctOfStock + '% of finished inventory'))
               )
             ),
             h('div', { style: { height: 7, borderRadius: 3.5, background: 'rgba(148, 163, 184, 0.16)', overflow: 'hidden' } },
@@ -719,7 +719,7 @@ function FinishedGoodsChart({ finishedGoods = [], currency = '₹' }) {
 }
 
 // Raw Materials Stock & Valuation Pie / Donut Chart Component
-function RawMaterialsPieChart({ rawMaterials = [], currency = '₹' }) {
+function RawMaterialsPieChart({ rawMaterials = [], currency = '₹', canViewFinancials = true }) {
   const [hoveredSlice, setHoveredSlice] = useState(null);
 
   let totalVal = 0;
@@ -768,7 +768,7 @@ function RawMaterialsPieChart({ rawMaterials = [], currency = '₹' }) {
   return h('div', { className: 'card chart-card', style: { padding: '18px 22px', marginBottom: 20 } },
     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
       h('div', null,
-        h('h3', { className: 'card-title' }, 'Raw materials valuation & share'),
+        h('h3', { className: 'card-title' }, canViewFinancials ? 'Raw materials valuation & share' : 'Raw materials stock distribution'),
         h('div', { className: 'card-subtitle' }, 'Visual inventory distribution across all raw materials and manufacturing inputs')
       ),
       h('span', { className: 'badge badge-neutral' }, `${materialList.length} Material Types`)
@@ -827,7 +827,7 @@ function RawMaterialsPieChart({ rawMaterials = [], currency = '₹' }) {
               fontWeight: '800',
               fill: 'currentColor',
               fontFamily: 'var(--font-mono)'
-            }, activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)),
+            }, canViewFinancials ? (activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)) : (activeSlice ? (activeSlice.quantity + ' ' + activeSlice.unit) : (materialList.reduce((sum, m) => sum + m.quantity, 0) + ' units'))),
             h('text', {
               x: 120,
               y: activeSlice ? 133 : 135,
@@ -865,7 +865,7 @@ function RawMaterialsPieChart({ rawMaterials = [], currency = '₹' }) {
                 )
               ),
               h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-                h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13.5 } }, formatCurrency(slice.value, currency)),
+                h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13.5 } }, canViewFinancials ? formatCurrency(slice.value, currency) : '₹ ••••'),
                 h('span', { className: 'pie-legend-pct', style: { fontWeight: 700, background: slice.color, color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 11 } }, `${slice.percent}%`)
               )
             );
@@ -5314,7 +5314,7 @@ function App() {
           ),
 
           // Finished Goods Stock & Profit Margins Chart
-          h(FinishedGoodsChart, { finishedGoods, currency: '₹' }),
+          h(FinishedGoodsChart, { finishedGoods, currency: '₹', canViewFinancials: roleConfig.canViewFinancials }),
 
           // Filter Pills for Finished Goods Stock State
           h('div', { className: 'filter-pills-row' },
@@ -5772,7 +5772,7 @@ function App() {
                 h('span', { className: 'metric-label' }, roleConfig.canViewFinancials ? 'Raw materials valuation' : 'Stock inventory count'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'inventory' }))
               ),
-              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(rawMaterialsVal) : ` units`),
+              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(rawMaterialsVal) : (rawMaterials.reduce((sum, m) => sum + (Number(m.quantity) || 0), 0) + ' units')),
               h('div', { className: 'metric-footer' }, roleConfig.canViewFinancials ? 'Capital in raw warehouse stock' : '🔒 Valuation masked for floor role')
             )
           ),
@@ -5852,7 +5852,7 @@ function App() {
           ),
 
           // Raw Materials Stock & Valuation Pie Chart
-          h(RawMaterialsPieChart, { rawMaterials, currency: '₹' }),
+          h(RawMaterialsPieChart, { rawMaterials, currency: '₹', canViewFinancials: roleConfig.canViewFinancials }),
 
           // Raw Material Table (Fig. 7)
           h('div', { className: 'card' },
