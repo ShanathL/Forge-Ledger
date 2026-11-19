@@ -3864,7 +3864,14 @@ body.dark-mode .role-sim-banner {
   border: 1px solid var(--border-light);
   border-radius: 16px;
   text-align: center;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  position: relative;
+  z-index: 10;
+}
+
+body.dark-mode .access-restricted-card {
+  background: #111827 !important;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .restricted-lock-icon {
@@ -3893,10 +3900,46 @@ body.dark-mode .role-sim-banner {
   line-height: 1.6;
 }
 
+/* Modal Overlay & Card Enforcements */
+.modal-overlay {
+  z-index: 2000 !important;
+  background: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+.modal-card {
+  z-index: 2001 !important;
+  background: #ffffff;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75) !important;
+}
+
+body.dark-mode .modal-card {
+  background-color: #111827 !important;
+  border: 1px solid var(--border-light);
+  color: var(--text-main);
+}
+
+body:not(.dark-mode) .modal-card {
+  background-color: #ffffff !important;
+  color: #0f172a;
+}
+
 /* Barcode & QR Label Studio Modal */
 .label-studio-modal {
-  max-width: 1060px;
-  width: 95vw;
+  max-width: 1060px !important;
+  width: 95vw !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  padding: 24px !important;
+}
+
+.scanner-modal {
+  max-width: 580px !important;
+  width: 95vw !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  padding: 24px !important;
 }
 
 .label-studio-grid {

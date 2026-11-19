@@ -2479,9 +2479,9 @@ function BarcodeLabelModal({
     );
   };
 
-  return h('div', { className: 'modal-backdrop', onClick: onClose },
+  return h('div', { className: 'modal-overlay', onClick: onClose },
     h('div', {
-      className: 'modal-content label-studio-modal',
+      className: 'modal-card label-studio-modal',
       onClick: e => e.stopPropagation()
     },
       // Header
@@ -2753,9 +2753,9 @@ function BarcodeScannerModal({
     }
   };
 
-  return h('div', { className: 'modal-backdrop', onClick: onClose },
+  return h('div', { className: 'modal-overlay', onClick: onClose },
     h('div', {
-      className: 'modal-content scanner-modal',
+      className: 'modal-card scanner-modal',
       onClick: e => e.stopPropagation()
     },
       // Header
@@ -2940,9 +2940,9 @@ function InviteTeamModal({ isOpen, onClose, onInvite }) {
     }
   };
 
-  return h('div', { className: 'modal-backdrop', onClick: onClose },
+  return h('div', { className: 'modal-overlay', onClick: onClose },
     h('div', {
-      className: 'modal-content',
+      className: 'modal-card',
       style: { maxWidth: 520 },
       onClick: e => e.stopPropagation()
     },
