@@ -1224,6 +1224,9 @@ function CommandPalette({
     ];
 
     const quickActions = [
+      { id: 'act-ai-analyst', type: 'AI Action', title: '✦ Ask ForgeAI Business Analyst (Margins, Costs & Risks)', action: 'aiAnalyst', icon: 'zap' },
+      { id: 'act-ai-ocr', type: 'AI Action', title: '⚡ Scan Vendor Bill with AI OCR (Auto-Expense)', action: 'ocr', icon: 'zap' },
+      { id: 'act-ai-forecast', type: 'AI Action', title: '📊 View AI Demand Forecast & Raw Material Runway', action: 'forecast', icon: 'production' },
       { id: 'act-sale', type: 'Action', title: '⚡ Create New Sales Invoice', action: 'sale', icon: 'sales' },
       { id: 'act-prod', type: 'Action', title: '⚙️ Start New Production Batch Run', action: 'production', icon: 'production' },
       { id: 'act-exp', type: 'Action', title: '💳 Record Operating Business Expense', action: 'expense', icon: 'expenses' },
@@ -1496,6 +1499,665 @@ const ACCENT_COLORS = {
   rose: { id: 'rose', name: 'Crimson Forge', primary: '#e11d48', hover: '#be123c', light: 'rgba(225, 29, 72, 0.1)' },
   teal: { id: 'teal', name: 'Steel Cyan', primary: '#0d9488', hover: '#0f766e', light: 'rgba(13, 148, 136, 0.1)' }
 };
+
+// ================= COMPONENT: AI PREDICTIVE DEMAND FORECAST & RUNWAY =================
+function AiForecastWidget({ rawMaterials = [], finishedGoods = [], sales = [], onRestock, currency = '₹' }) {
+  const [forecastData, setForecastData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const loadForecast = () => {
+    setLoading(true);
+    fetch('/api/ai/forecast')
+      .then(res => res.json())
+      .then(res => {
+        setLoading(false);
+        if (res.success) {
+          setForecastData(res.data);
+        } else {
+          setError(res.error || 'Failed to load forecast');
+        }
+      })
+      .catch(err => {
+        setLoading(false);
+        setError(err.message || 'Network error');
+      });
+  };
+
+  useEffect(() => {
+    loadForecast();
+  }, [rawMaterials.length, sales.length]);
+
+  if (loading && !forecastData) {
+    return h('div', { className: 'forecast-panel', style: { padding: '24px', textAlign: 'center' } },
+      h('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)' } },
+        h('div', { className: 'ai-typing-dot' }),
+        h('span', null, 'AI analyzing sales velocity and calculating raw material runway...')
+      )
+    );
+  }
+
+  const summary = forecastData?.summary || {};
+  const materials = forecastData?.rawMaterialForecast || [];
+  const insights = forecastData?.insights || [];
+
+  return h('div', { className: 'forecast-panel' },
+    h('div', { className: 'forecast-header' },
+      h('div', { className: 'forecast-title-wrap' },
+        h('div', { className: 'forecast-sparkle-badge' }, '⚡'),
+        h('div', null,
+          h('h3', { style: { fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' } }, 'Predictive Demand Forecasting & Replenishment'),
+          h('div', { style: { fontSize: 12, color: 'var(--text-muted)' } }, 'Using past 30-day sales run rates to project raw material depletion and stockout risks.')
+        )
+      ),
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        h('button', {
+          className: 'btn btn-outline',
+          style: { padding: '4px 9px', fontSize: 11.5 },
+          onClick: loadForecast
+        }, h(Icon, { name: 'refresh', size: 13 }), 'Recalculate Runways')
+      )
+    ),
+
+    // KPI Summary row
+    h('div', { className: 'forecast-kpis' },
+      h('div', { className: 'forecast-kpi-card' },
+        h('div', { className: 'forecast-kpi-label' }, 'Critical Stockout Hazards'),
+        h('div', { className: 'forecast-kpi-val', style: { color: summary.criticalCount > 0 ? '#ef4444' : '#10b981' } },
+          `${summary.criticalCount || 0} Material(s)`
+        ),
+        h('div', { className: 'forecast-kpi-sub' }, summary.criticalCount > 0 ? 'Runway under 7 days' : 'All runways above 7 days')
+      ),
+      h('div', { className: 'forecast-kpi-card' },
+        h('div', { className: 'forecast-kpi-label' }, '30-Day Replenishment Capital'),
+        h('div', { className: 'forecast-kpi-val', style: { color: 'var(--primary)' } },
+          formatCurrency(summary.totalProcurementBudget || 0, currency)
+        ),
+        h('div', { className: 'forecast-kpi-sub' }, 'Capital needed for 30-day target buffers')
+      ),
+      h('div', { className: 'forecast-kpi-card' },
+        h('div', { className: 'forecast-kpi-label' }, 'Highest Urgency Item'),
+        h('div', { className: 'forecast-kpi-val', style: { fontSize: 14, color: '#f59e0b' } },
+          summary.highestRiskMaterial ? `${summary.highestRiskMaterial.name} (${summary.highestRiskMaterial.runwayDays}d left)` : 'None'
+        ),
+        h('div', { className: 'forecast-kpi-sub' }, 'Projected earliest stockout')
+      )
+    ),
+
+    // Strategic Insights Alert
+    insights.length > 0 && h('div', { className: 'forecast-insights-alert' },
+      insights.map((ins, idx) => h('div', { key: idx, style: { marginBottom: idx < insights.length - 1 ? 4 : 0 } }, ins))
+    ),
+
+    // Replenishment & Runway Table
+    h('div', { className: 'custom-table-container' },
+      h('table', { className: 'custom-table' },
+        h('thead', null,
+          h('tr', null,
+            h('th', null, 'RAW MATERIAL'),
+            h('th', null, 'ON HAND'),
+            h('th', null, 'DAILY SALES BURN'),
+            h('th', null, 'EST. RUNWAY'),
+            h('th', null, 'PROJECTED STOCKOUT'),
+            h('th', null, 'RISK LEVEL'),
+            h('th', null, 'AI RECOMMENDED ORDER'),
+            h('th', null, 'EST. COST'),
+            h('th', { style: { textAlign: 'right' } }, 'ACTION')
+          )
+        ),
+        h('tbody', null,
+          materials.map(m => {
+            const pct = Math.min(100, Math.max(5, (m.runwayDays / 30) * 100));
+            const fillClass = m.riskLevel === 'CRITICAL' ? 'critical' : m.riskLevel === 'WARNING' ? 'warning' : 'healthy';
+
+            return h('tr', { key: m.id },
+              h('td', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, m.name),
+              h('td', null, `${m.currentStock} ${m.unit}`),
+              h('td', { style: { fontFamily: 'var(--font-mono)' } }, `${m.dailyBurnRate} ${m.unit}/day`),
+              h('td', null,
+                h('div', { style: { fontWeight: 700, color: m.riskLevel === 'CRITICAL' ? '#ef4444' : m.riskLevel === 'WARNING' ? '#f59e0b' : '#10b981' } }, `${m.runwayDays} days`),
+                h('div', { className: 'runway-bar-container' },
+                  h('div', { className: `runway-bar-fill ${fillClass}`, style: { width: `${pct}%` } })
+                )
+              ),
+              h('td', { style: { fontSize: 11.5, color: 'var(--text-secondary)' } }, formatDate(m.runoutDate)),
+              h('td', null,
+                h('span', { className: `badge ${m.riskBadgeClass}` }, m.riskLevel)
+              ),
+              h('td', { style: { fontWeight: 700 } }, `${m.recommendedOrderQty} ${m.unit}`),
+              h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600 } }, formatCurrency(m.estimatedProcurementCost, currency)),
+              h('td', { style: { textAlign: 'right' } },
+                m.recommendedOrderQty > 0 && h('button', {
+                  className: 'btn btn-outline',
+                  style: { padding: '3px 8px', fontSize: 11, borderColor: 'var(--primary)', color: 'var(--primary)' },
+                  onClick: () => onRestock && onRestock(m)
+                }, '+ Reorder')
+              )
+            );
+          })
+        )
+      )
+    )
+  );
+}
+
+// ================= COMPONENT: SMART DOCUMENT / INVOICE OCR SCANNER =================
+function SmartInvoiceOcrModal({ isOpen, onClose, onSuccess, currency = '₹' }) {
+  if (!isOpen) return null;
+
+  const [scanning, setScanning] = useState(false);
+  const [selectedSample, setSelectedSample] = useState(null);
+  const [ocrResult, setOcrResult] = useState(null);
+  const [scanStep, setScanStep] = useState('');
+  const [formValues, setFormValues] = useState({
+    description: '',
+    category: 'Materials',
+    expense_date: new Date().toISOString().split('T')[0],
+    payment_method: 'Bank Transfer',
+    amount: ''
+  });
+
+  const handleScanSample = (sampleId) => {
+    setSelectedSample(sampleId);
+    setScanning(true);
+    setScanStep('Initializing neural optical recognition...');
+
+    setTimeout(() => setScanStep('Detecting vendor letterhead & GSTIN...'), 400);
+    setTimeout(() => setScanStep('Extracting line items, unit rates & CGST/SGST...'), 800);
+
+    fetch('/api/ai/ocr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sampleId })
+    })
+      .then(res => res.json())
+      .then(res => {
+        setTimeout(() => {
+          setScanning(false);
+          if (res.success && res.data) {
+            setOcrResult(res.data);
+            setFormValues({
+              description: res.data.description || `${res.data.category} from ${res.data.vendor}`,
+              category: res.data.category || 'Materials',
+              expense_date: res.data.date || new Date().toISOString().split('T')[0],
+              payment_method: res.data.paymentMethod || 'Bank Transfer',
+              amount: String(res.data.totalAmount || '')
+            });
+          }
+        }, 1100);
+      })
+      .catch(err => {
+        setScanning(false);
+        alert(err.message || 'OCR processing failed');
+      });
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    setScanning(true);
+    setScanStep(`Reading document: ${file.name}...`);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result;
+      setTimeout(() => setScanStep('Extracting invoice table & amount figures...'), 500);
+
+      fetch('/api/ai/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, fileBase64: base64 })
+      })
+        .then(res => res.json())
+        .then(res => {
+          setTimeout(() => {
+            setScanning(false);
+            if (res.success && res.data) {
+              setOcrResult(res.data);
+              setFormValues({
+                description: res.data.description || `${res.data.category} from ${res.data.vendor}`,
+                category: res.data.category || 'Materials',
+                expense_date: res.data.date || new Date().toISOString().split('T')[0],
+                payment_method: res.data.paymentMethod || 'Bank Transfer',
+                amount: String(res.data.totalAmount || '')
+              });
+            }
+          }, 900);
+        })
+        .catch(err => {
+          setScanning(false);
+          alert(err.message || 'OCR processing failed');
+        });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveExtractedExpense = (e) => {
+    e.preventDefault();
+    if (!formValues.amount || Number(formValues.amount) <= 0) {
+      alert('Please enter a valid expense amount.');
+      return;
+    }
+
+    fetch('/api/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: formValues.description,
+        category: formValues.category,
+        expense_date: formValues.expense_date,
+        payment_method: formValues.payment_method,
+        amount: Number(formValues.amount)
+      })
+    })
+      .then(res => res.json())
+        .then(res => {
+          if (res.success) {
+            onSuccess && onSuccess(res.data);
+            onClose();
+          } else {
+            alert(res.error || 'Failed to save expense');
+          }
+        })
+        .catch(err => alert(err.message || 'Network error'));
+  };
+
+  return h('div', { className: 'modal-overlay' },
+    h('div', { className: 'modal-card ocr-modal-card' },
+      h('div', { className: 'modal-header' },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+          h('span', { style: { fontSize: 20 } }, '⚡'),
+          h('div', null,
+            h('h3', null, 'Smart Document / Invoice OCR Scanner'),
+            h('div', { style: { fontSize: 12, color: 'var(--text-muted)' } }, 'Extract vendor names, line items, and tax totals directly into your expenses.')
+          )
+        ),
+        h('button', { className: 'modal-close', onClick: onClose }, '✕')
+      ),
+      h('div', { className: 'modal-body', style: { padding: '18px 24px' } },
+        // Sample Bills Quick Test Pills
+        h('div', null,
+          h('div', { style: { fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, letterSpacing: '0.5px' } },
+            'TRY SAMPLE PHYSICAL VENDOR BILLS (1-CLICK TEST):'
+          ),
+          h('div', { className: 'ocr-sample-pills' },
+            h('button', {
+              type: 'button',
+              className: `ocr-sample-pill ${selectedSample === 'sample-steel' ? 'active' : ''}`,
+              onClick: () => handleScanSample('sample-steel')
+            }, '📄 Precision Metals Corp (Steel Sheets · ₹29,146)'),
+            h('button', {
+              type: 'button',
+              className: `ocr-sample-pill ${selectedSample === 'sample-power' ? 'active' : ''}`,
+              onClick: () => handleScanSample('sample-power')
+            }, '⚡ Industrial Power Bill (HT Electricity · ₹18,748)'),
+            h('button', {
+              type: 'button',
+              className: `ocr-sample-pill ${selectedSample === 'sample-machinery' ? 'active' : ''}`,
+              onClick: () => handleScanSample('sample-machinery')
+            }, '🔧 Apex CNC Maintenance (Hydraulic Spares · ₹14,042)')
+          )
+        ),
+
+        // File dropzone
+        h('div', { style: { margin: '10px 0 16px 0', border: '2px dashed var(--border-light)', borderRadius: 10, padding: '16px', textAlign: 'center', background: 'var(--bg-secondary)', position: 'relative' } },
+          h('input', {
+            type: 'file',
+            accept: 'image/*,.pdf,.txt',
+            onChange: handleFileUpload,
+            style: { position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }
+          }),
+          h('div', { style: { pointerEvents: 'none' } },
+            h('span', { style: { fontSize: 22, display: 'block', marginBottom: 4 } }, '📁'),
+            h('div', { style: { fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' } }, 'Click to upload a physical vendor bill or drag and drop'),
+            h('div', { style: { fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 } }, 'PNG, JPG, or PDF invoices supported')
+          )
+        ),
+
+        // Two-column Split: Document View on Left, Extracted Fields on Right
+        h('div', { className: 'ocr-scanner-grid' },
+          // Left Column: Document Scanner Box
+          h('div', { className: 'ocr-preview-box' },
+            scanning && h('div', { className: 'ocr-laser-line' }),
+            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 } },
+              h('span', { style: { fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.4px' } }, 'DOCUMENT PREVIEW'),
+              ocrResult && h('span', { className: 'badge badge-success', style: { fontSize: 10 } }, `${Math.round((ocrResult.confidenceScore || 0.95) * 100)}% Confidence`)
+            ),
+            scanning ?
+              h('div', { style: { margin: 'auto', textAlign: 'center', padding: '30px 10px' } },
+                h('div', { className: 'ai-typing-indicator', style: { marginBottom: 12 } },
+                  h('div', { className: 'ai-typing-dot' }),
+                  h('div', { className: 'ai-typing-dot' }),
+                  h('div', { className: 'ai-typing-dot' })
+                ),
+                h('div', { style: { fontWeight: 700, fontSize: 13, color: '#8b5cf6' } }, 'AI OCR Scanning in Progress...'),
+                h('div', { style: { fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 } }, scanStep)
+              ) :
+              ocrResult ?
+                h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
+                  h('pre', {
+                    style: {
+                      background: 'rgba(0,0,0,0.2)',
+                      padding: '12px',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                      lineHeight: 1.4,
+                      whiteSpace: 'pre-wrap',
+                      color: 'var(--text-secondary)',
+                      flex: 1,
+                      overflowY: 'auto',
+                      maxHeight: 220
+                    }
+                  }, ocrResult.rawText || 'Document text extracted.'),
+                  ocrResult.lineItems && ocrResult.lineItems.length > 0 && h('div', { style: { marginTop: 10 } },
+                    h('div', { style: { fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 } }, 'DETECTED LINE ITEMS:'),
+                    ocrResult.lineItems.map((it, idx) =>
+                      h('div', { key: idx, style: { display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '3px 0', borderBottom: '1px dashed var(--border-light)' } },
+                        h('span', null, it.description),
+                        h('span', { style: { fontWeight: 600, fontFamily: 'var(--font-mono)' } }, formatCurrency(it.total, currency))
+                      )
+                    )
+                  )
+                ) :
+                h('div', { style: { margin: 'auto', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 } },
+                  'Select a sample bill above or upload a document to view OCR extraction.'
+                )
+          ),
+
+          // Right Column: Editable Expense Fields
+          h('form', { onSubmit: handleSaveExtractedExpense, style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+            h('div', { className: 'form-group' },
+              h('label', null, 'Extracted Description / Title'),
+              h('input', {
+                className: 'form-input',
+                value: formValues.description,
+                required: true,
+                onChange: e => setFormValues({ ...formValues, description: e.target.value })
+              })
+            ),
+            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+              h('div', { className: 'form-group' },
+                h('label', null, 'Expense Category'),
+                h('select', {
+                  className: 'form-input',
+                  value: formValues.category,
+                  onChange: e => setFormValues({ ...formValues, category: e.target.value })
+                },
+                  h('option', { value: 'Materials' }, 'Materials'),
+                  h('option', { value: 'Utilities' }, 'Utilities'),
+                  h('option', { value: 'Maintenance' }, 'Maintenance'),
+                  h('option', { value: 'Logistics' }, 'Logistics'),
+                  h('option', { value: 'General' }, 'General')
+                )
+              ),
+              h('div', { className: 'form-group' },
+                h('label', null, 'Invoice / Bill Date'),
+                h('input', {
+                  type: 'date',
+                  className: 'form-input',
+                  value: formValues.expense_date,
+                  required: true,
+                  onChange: e => setFormValues({ ...formValues, expense_date: e.target.value })
+                })
+              )
+            ),
+            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
+              h('div', { className: 'form-group' },
+                h('label', null, 'Payment Method'),
+                h('select', {
+                  className: 'form-input',
+                  value: formValues.payment_method,
+                  onChange: e => setFormValues({ ...formValues, payment_method: e.target.value })
+                },
+                  h('option', { value: 'Bank Transfer' }, 'Bank Transfer (NEFT/RTGS)'),
+                  h('option', { value: 'Online Banking' }, 'Online Banking'),
+                  h('option', { value: 'UPI' }, 'UPI'),
+                  h('option', { value: 'Cash' }, 'Cash'),
+                  h('option', { value: 'Cheque' }, 'Cheque')
+                )
+              ),
+              h('div', { className: 'form-group' },
+                h('label', null, `Total Amount (${currency})`),
+                h('input', {
+                  type: 'number',
+                  step: '0.01',
+                  className: 'form-input',
+                  placeholder: '0.00',
+                  value: formValues.amount,
+                  required: true,
+                  style: { fontWeight: 700, fontSize: 15, fontFamily: 'var(--font-mono)' },
+                  onChange: e => setFormValues({ ...formValues, amount: e.target.value })
+                })
+              )
+            ),
+            h('div', { style: { marginTop: 'auto', display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 10 } },
+              h('button', { type: 'button', className: 'btn btn-outline', onClick: onClose }, 'Cancel'),
+              h('button', {
+                type: 'submit',
+                className: 'btn btn-primary',
+                style: { background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', border: 'none' },
+                disabled: scanning || !formValues.amount
+              }, '✓ Save Extracted Expense')
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+// ================= COMPONENT: NATURAL LANGUAGE BUSINESS ANALYST COPILOT =================
+function AiAnalystDrawer({ isOpen, onClose, initialQuery = '', currency = '₹' }) {
+  if (!isOpen) return null;
+
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: 'Hello! I am your **ForgeAI Business Analyst**. Ask me anything about your product profit margins, operating expense distributions, raw material stockout hazards, or financial profitability.',
+      suggestions: [
+        'What was our highest-margin product last month?',
+        'How much did we spend on utilities vs raw materials?',
+        'Which raw materials have a high risk of stockout?',
+        'What is our net operating profit and margin?'
+      ]
+    }
+  ]);
+  const [inputQuery, setInputQuery] = useState(initialQuery || '');
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
+
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim()) {
+      handleSend(initialQuery);
+    }
+  }, [initialQuery]);
+
+  const handleSend = (textToSend) => {
+    const q = textToSend || inputQuery;
+    if (!q || !q.trim() || loading) return;
+
+    const userMsg = { role: 'user', content: q };
+    setMessages(prev => [...prev, userMsg]);
+    setInputQuery('');
+    setLoading(true);
+
+    fetch('/api/ai/analyst', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, history: messages.slice(-4) })
+    })
+      .then(res => res.json())
+      .then(res => {
+        setLoading(false);
+        if (res.success && res.data) {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: res.data.answer,
+            metrics: res.data.metrics,
+            table: res.data.table,
+            suggestions: res.data.suggestions
+          }]);
+        } else {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `I encountered an issue analyzing the ledger: ${res.error || 'Unknown error'}. Please try rephrasing your question.`
+          }]);
+        }
+      })
+      .catch(err => {
+        setLoading(false);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Network error: ${err.message}. Please verify your connection.`
+        }]);
+      });
+  };
+
+  return h('div', { className: 'ai-drawer-overlay', onClick: onClose },
+    h('div', { className: 'ai-drawer-card', onClick: e => e.stopPropagation() },
+      // Header
+      h('div', { className: 'ai-drawer-header' },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+          h('div', { className: 'forecast-sparkle-badge' }, '✦'),
+          h('div', null,
+            h('h3', { style: { margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' } }, 'ForgeAI Business Analyst'),
+            h('div', { style: { fontSize: 11.5, color: 'var(--text-muted)' } }, 'Real-time conversational financial & operations copilot')
+          )
+        ),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          h('button', {
+            className: 'btn btn-outline',
+            style: { padding: '3px 8px', fontSize: 11 },
+            onClick: () => setMessages([
+              {
+                role: 'assistant',
+                content: 'Chat cleared. Ask me another question about margins, expenses, or inventory!',
+                suggestions: [
+                  'What was our highest-margin product last month?',
+                  'How much did we spend on utilities vs raw materials?',
+                  'What is our net operating profit and margin?'
+                ]
+              }
+            ])
+          }, 'Clear'),
+          h('button', { className: 'modal-close', style: { position: 'static' }, onClick: onClose }, '✕')
+        )
+      ),
+
+      // Message Area
+      h('div', { className: 'ai-drawer-messages', ref: messagesEndRef },
+        messages.map((m, idx) => {
+          const isUser = m.role === 'user';
+          return h('div', { key: idx, className: `ai-msg-bubble ${isUser ? 'ai-msg-user' : 'ai-msg-bot'}` },
+            // Bubble Content
+            h('div', {
+              style: { whiteSpace: 'pre-wrap' },
+              dangerouslySetInnerHTML: {
+                __html: (m.content || '')
+                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/• (.*?)(?:\n|$)/g, '<div style="margin-left: 12px; margin-bottom: 3px;">• $1</div>')
+              }
+            }),
+
+            // Optional KPI Metrics Callouts
+            m.metrics && m.metrics.length > 0 && h('div', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: `repeat(${Math.min(3, m.metrics.length)}, 1fr)`,
+                gap: 8,
+                marginTop: 12,
+                padding: '10px',
+                background: 'rgba(0,0,0,0.06)',
+                borderRadius: 8
+              }
+            },
+              m.metrics.map((met, mi) => h('div', { key: mi, style: { textAlign: 'center' } },
+                h('div', { style: { fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' } }, met.label),
+                h('div', { style: { fontSize: 16, fontWeight: 800, color: met.badge === 'success' ? '#10b981' : met.badge === 'danger' ? '#ef4444' : 'var(--text-primary)', fontFamily: 'var(--font-mono)' } }, met.value),
+                met.subtext && h('div', { style: { fontSize: 10, color: 'var(--text-secondary)' } }, met.subtext)
+              ))
+            ),
+
+            // Optional Structured Table
+            m.table && h('div', { style: { marginTop: 12, overflowX: 'auto' } },
+              m.table.title && h('div', { style: { fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 5 } }, m.table.title.toUpperCase()),
+              h('table', { style: { width: '100%', fontSize: 11, borderCollapse: 'collapse', textAlign: 'left' } },
+                h('thead', null,
+                  h('tr', { style: { borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)' } },
+                    m.table.headers.map((th, thi) => h('th', { key: thi, style: { padding: '5px 6px' } }, th))
+                  )
+                ),
+                h('tbody', null,
+                  m.table.rows.map((row, ri) => h('tr', { key: ri, style: { borderBottom: '1px solid rgba(148, 163, 184, 0.15)' } },
+                    row.map((cell, ci) => h('td', { key: ci, style: { padding: '5px 6px', fontFamily: ci > 0 ? 'var(--font-mono)' : 'inherit' } }, cell))
+                  ))
+                )
+              )
+            ),
+
+            // Optional Suggestion Chips
+            m.suggestions && m.suggestions.length > 0 && h('div', { className: 'ai-chip-suggestions' },
+              m.suggestions.map((sug, si) => h('button', {
+                key: si,
+                type: 'button',
+                className: 'ai-chip-pill',
+                onClick: () => handleSend(sug)
+              }, sug))
+            )
+          );
+        }),
+
+        loading && h('div', { className: 'ai-typing-indicator' },
+          h('div', { className: 'ai-typing-dot' }),
+          h('div', { className: 'ai-typing-dot' }),
+          h('div', { className: 'ai-typing-dot' }),
+          h('span', null, 'ForgeAI analyzing plant data...')
+        )
+      ),
+
+      // Input Row
+      h('form', {
+        className: 'ai-drawer-input-row',
+        onSubmit: e => { e.preventDefault(); handleSend(); }
+      },
+        h('input', {
+          className: 'form-input',
+          style: { flex: 1, borderRadius: 20, padding: '9px 16px', fontSize: 13 },
+          placeholder: 'Ask about margins, expenses, raw materials...',
+          value: inputQuery,
+          disabled: loading,
+          onChange: e => setInputQuery(e.target.value)
+        }),
+        h('button', {
+          type: 'submit',
+          className: 'btn btn-primary',
+          style: {
+            borderRadius: 20,
+            padding: '9px 16px',
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+            border: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6
+          },
+          disabled: loading || !inputQuery.trim()
+        }, 'Send', h(Icon, { name: 'arrowRight', size: 14 }))
+      )
+    )
+  );
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -1775,6 +2437,12 @@ function App() {
   // Modal States
   const [modalType, setModalType] = useState(null); // 'item', 'sale', 'expense', 'employee', 'production'
   const [formData, setFormData] = useState({});
+
+  // AI Feature States (Predictive Demand Forecasting, Smart Invoice OCR, Natural Language Business Analyst)
+  const [showForecastView, setShowForecastView] = useState(false);
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [showAiAnalyst, setShowAiAnalyst] = useState(false);
+  const [aiAnalystInitialQuery, setAiAnalystInitialQuery] = useState('');
 
   // Inline Raw Material Form State (Fig. 7)
   const [rawMaterialForm, setRawMaterialForm] = useState({ name: '', unit: 'kg', quantity: 0, unit_cost: 0 });
@@ -2708,6 +3376,13 @@ function App() {
           )
         ),
         h('div', { className: 'top-header-right' },
+          // AI Business Analyst Trigger Button
+          h('button', {
+            className: 'ai-analyst-header-btn',
+            onClick: () => { setAiAnalystInitialQuery(''); setShowAiAnalyst(true); },
+            title: 'Ask ForgeAI Business Analyst (Margins, Expenses, Forecasting)'
+          }, '✦ Ask ForgeAI'),
+
           // Universal Search & Command Palette Trigger Button (Ctrl+K)
           h('button', {
             className: 'header-search-palette-btn',
@@ -2817,6 +3492,44 @@ function App() {
               ),
               h('div', { className: 'metric-value' }, formatCurrency(rawMaterialsVal)),
               h('div', { className: 'metric-footer' }, `${rawMaterials.length || rawMaterialsList.length} material type(s) in warehouse`)
+            )
+          ),
+
+          // ForgeAI Quick Copilot & Business Analyst Bar
+          h('div', {
+            style: {
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.12) 100%)',
+              border: '1px solid rgba(139, 92, 246, 0.25)',
+              borderRadius: 12,
+              padding: '12px 18px',
+              margin: '0 0 20px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12
+            }
+          },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              h('div', { className: 'forecast-sparkle-badge' }, '✦'),
+              h('div', null,
+                h('div', { style: { fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' } }, 'ForgeAI Copilot & Business Analyst'),
+                h('div', { style: { fontSize: 11.5, color: 'var(--text-muted)' } }, 'Instant answers on product margins, utilities vs raw materials, and stockout hazards.')
+              )
+            ),
+            h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+              [
+                'What was our highest-margin product last month?',
+                'How much did we spend on utilities vs raw materials?',
+                'Which raw materials are at risk of running out?'
+              ].map((prompt, pi) =>
+                h('button', {
+                  key: pi,
+                  type: 'button',
+                  className: 'ai-chip-pill',
+                  onClick: () => { setAiAnalystInitialQuery(prompt); setShowAiAnalyst(true); }
+                }, prompt)
+              )
             )
           ),
 
@@ -3400,6 +4113,10 @@ function App() {
                   amount: 'Amount (INR)'
                 })
               }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
+              h('button', {
+                className: 'btn-ai-scan',
+                onClick: () => setShowOcrModal(true)
+              }, '⚡ Scan Vendor Bill (AI OCR)'),
               h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('expense'); } },
                 h(Icon, { name: 'plus' }), 'Add expense'
               )
@@ -3531,6 +4248,13 @@ function App() {
               h('div', { className: 'page-subtitle' }, 'FACTORY INPUTS & INGREDIENTS'),
               h('h1', { className: 'page-title' }, 'Raw materials'),
               h('p', { className: 'page-desc' }, 'Warehouse stock of metals, sheets, rods, and components for manufacturing.')
+            ),
+            h('div', { className: 'header-actions' },
+              h('button', {
+                className: `btn ${showForecastView ? 'btn-primary' : 'btn-outline'}`,
+                style: showForecastView ? { background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', border: 'none' } : {},
+                onClick: () => setShowForecastView(!showForecastView)
+              }, '⚡ ' + (showForecastView ? 'Hide AI Forecast' : 'AI Demand Forecast & Runway'))
             )
           ),
 
@@ -3561,6 +4285,22 @@ function App() {
               h('div', { className: 'metric-footer' }, 'Capital in raw warehouse stock')
             )
           ),
+
+          // AI Predictive Demand Forecasting Panel
+          showForecastView && h(AiForecastWidget, {
+            rawMaterials,
+            finishedGoods,
+            sales,
+            onRestock: (mat) => {
+              setFormData({
+                category: 'Materials',
+                description: `Restock purchase of ${mat.name} (${mat.recommendedOrderQty} ${mat.unit})`,
+                amount: mat.estimatedProcurementCost
+              });
+              setModalType('expense');
+            },
+            currency: '₹'
+          }),
 
           // Add Raw Material Inline Form (Fig. 7)
           h('div', { className: 'inline-form-card' },
@@ -6037,7 +6777,10 @@ function App() {
         if (searchVal) setSearchQuery(searchVal);
       },
       onAction: (act) => {
-        if (act === 'sale') { setFormData({}); setModalType('sale'); }
+        if (act === 'aiAnalyst') { setAiAnalystInitialQuery(''); setShowAiAnalyst(true); }
+        else if (act === 'ocr') { setShowOcrModal(true); }
+        else if (act === 'forecast') { setActiveTab('rawMaterials'); setShowForecastView(true); }
+        else if (act === 'sale') { setFormData({}); setModalType('sale'); }
         else if (act === 'production') { setFormData({}); setModalType('production'); }
         else if (act === 'expense') { setFormData({}); setModalType('expense'); }
         else if (act === 'employee') { setFormData({}); setModalType('employee'); }
@@ -6053,7 +6796,33 @@ function App() {
     }),
 
     // Toast Notification System
-    h(ToastContainer, { toasts, onDismiss: removeToast })
+    h(ToastContainer, { toasts, onDismiss: removeToast }),
+
+    // Floating AI Analyst Trigger Pill
+    h('button', {
+      className: 'ai-floating-trigger',
+      onClick: () => { setAiAnalystInitialQuery(''); setShowAiAnalyst(true); },
+      title: 'Ask ForgeAI Business Analyst'
+    }, h('span', { style: { fontSize: 16 } }, '✦'), 'Ask ForgeAI'),
+
+    // Smart Document / Invoice OCR Modal
+    h(SmartInvoiceOcrModal, {
+      isOpen: showOcrModal,
+      onClose: () => setShowOcrModal(false),
+      onSuccess: (exp) => {
+        addToast(`Expense saved from vendor bill: ${exp.description || 'Invoice'}!`, 'success');
+        loadAllData();
+      },
+      currency: '₹'
+    }),
+
+    // ForgeAI Natural Language Business Analyst Drawer
+    h(AiAnalystDrawer, {
+      isOpen: showAiAnalyst,
+      onClose: () => setShowAiAnalyst(false),
+      initialQuery: aiAnalystInitialQuery,
+      currency: '₹'
+    })
   );
 }
 
