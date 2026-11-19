@@ -3067,6 +3067,7 @@ function App() {
   const [simulatedRole, setSimulatedRole] = useState(() => {
     try { return localStorage.getItem('forgeledger_simulated_role') || null; } catch (_) { return null; }
   });
+  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
 
   // Label Studio & Scanner Modals state
   const [showLabelModal, setShowLabelModal] = useState(false);
@@ -3247,6 +3248,9 @@ function App() {
         setShowCompanyModal(false);
         setMobileMenuOpen(false);
         setFabOpen(false);
+        setShowRoleDropdown(false);
+        setShowScannerModal(false);
+        setShowLabelModal(false);
         return;
       }
 
@@ -3278,6 +3282,18 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleDarkMode]);
+
+  // Click-outside listener to automatically close role selector dropdown
+  useEffect(() => {
+    if (!showRoleDropdown) return;
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.role-selector-dropdown-wrap')) {
+        setShowRoleDropdown(false);
+      }
+    };
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [showRoleDropdown]);
 
   useEffect(() => {
     if (darkMode) {
@@ -4363,55 +4379,69 @@ function App() {
           )
         ),
         h('div', { className: 'top-header-right' },
-          // Barcode Camera Scanner Header Button
-          h('button', {
-            className: 'header-action-pill-btn',
-            onClick: () => setShowScannerModal(true),
-            title: 'Scan Barcodes & QR Codes with Camera / Mobile'
-          },
-            h('span', null, '📷'),
-            h('span', null, 'Scan Barcode')
-          ),
-
-          // Barcode & QR Label Studio Header Button
-          h('button', {
-            className: 'header-action-pill-btn',
-            onClick: () => { setLabelModalItem(null); setShowLabelModal(true); },
-            title: 'Design & Print Barcode & QR Labels (Thermal & A4)'
-          },
-            h('span', null, '🏷️'),
-            h('span', null, 'Labels')
-          ),
-
-          // Role Switcher / Simulator Pill
-          h('div', {
-            className: 'role-switcher-header',
-            title: 'Simulate Staff Views: Owner, Operator, Clerk, Accountant'
-          },
-            [
-              { key: 'owner', label: 'Owner', icon: '👑' },
-              { key: 'operator', label: 'Operator', icon: '⚙️' },
-              { key: 'clerk', label: 'Clerk', icon: '📦' },
-              { key: 'accountant', label: 'Accountant', icon: '📊' }
-            ].map(r =>
-              h('button', {
-                key: r.key,
-                type: 'button',
-                className: `role-switcher-btn ${effectiveRole === r.key ? 'active' : ''}`,
-                onClick: () => handleSwitchSimulatedRole(r.key)
-              },
-                h('span', null, r.icon),
-                h('span', null, r.label)
-              )
+          // Header Tools Group: Scan Barcode & Label Studio
+          h('div', { className: 'header-tools-group' },
+            h('button', {
+              className: 'header-tool-btn',
+              onClick: () => setShowScannerModal(true),
+              title: 'Scan Barcodes & QR Codes with Camera / Mobile'
+            },
+              h('span', null, '📷'),
+              h('span', { className: 'tool-btn-text' }, 'Scan')
+            ),
+            h('button', {
+              className: 'header-tool-btn',
+              onClick: () => { setLabelModalItem(null); setShowLabelModal(true); },
+              title: 'Design & Print Barcode & QR Labels (Thermal & A4)'
+            },
+              h('span', null, '🏷️'),
+              h('span', { className: 'tool-btn-text' }, 'Labels')
             )
           ),
 
-          // AI Business Analyst Trigger Button
-          h('button', {
-            className: 'ai-analyst-header-btn',
-            onClick: () => { setAiAnalystInitialQuery(''); setShowAiAnalyst(true); },
-            title: 'Ask ForgeAI Business Analyst (Margins, Expenses, Forecasting)'
-          }, '✦ Ask ForgeAI'),
+          // Role Switcher / Simulator Dropdown Pill
+          h('div', { className: 'role-selector-dropdown-wrap' },
+            h('button', {
+              type: 'button',
+              className: `role-selector-trigger ${simulatedRole ? 'is-simulated' : ''}`,
+              onClick: (e) => { e.stopPropagation(); setShowRoleDropdown(prev => !prev); },
+              title: 'Simulate Staff Views: Owner, Operator, Clerk, Accountant'
+            },
+              h('span', { style: { fontSize: 13 } }, roleConfig.icon),
+              h('span', { className: 'role-trigger-label' }, roleConfig.name.split(' ')[0]),
+              simulatedRole && h('span', { className: 'role-sim-tag' }, 'SIM'),
+              h('span', { style: { fontSize: 9, opacity: 0.7, marginLeft: 2 } }, '▼')
+            ),
+            showRoleDropdown && h('div', {
+              className: 'role-dropdown-menu',
+              onClick: e => e.stopPropagation()
+            },
+              h('div', { className: 'role-dropdown-header' }, 'SIMULATE ROLE VIEW'),
+              [
+                { key: 'owner', label: 'Plant Owner / Admin', icon: '👑', desc: 'Full unrestricted governance' },
+                { key: 'operator', label: 'Shop Floor Operator', icon: '⚙️', desc: 'Production queue & materials only' },
+                { key: 'clerk', label: 'Warehouse Clerk', icon: '📦', desc: 'Stock inventory & barcode scanning' },
+                { key: 'accountant', label: 'Accountant & Tax', icon: '📊', desc: 'Invoices, expenses & payroll' }
+              ].map(r =>
+                h('button', {
+                  key: r.key,
+                  type: 'button',
+                  className: `role-dropdown-item ${effectiveRole === r.key ? 'active' : ''}`,
+                  onClick: () => {
+                    handleSwitchSimulatedRole(r.key === 'owner' ? null : r.key);
+                    setShowRoleDropdown(false);
+                  }
+                },
+                  h('span', { style: { fontSize: 16 } }, r.icon),
+                  h('div', { style: { textAlign: 'left', flex: 1 } },
+                    h('div', { style: { fontWeight: 700, fontSize: 12 } }, r.label),
+                    h('div', { style: { fontSize: 10.5, opacity: 0.75 } }, r.desc)
+                  ),
+                  effectiveRole === r.key && h('span', { style: { color: '#38bdf8', fontWeight: 800 } }, '✓')
+                )
+              )
+            )
+          ),
 
           // Universal Search & Command Palette Trigger Button (Ctrl+K)
           h('button', {

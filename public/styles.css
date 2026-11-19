@@ -3786,6 +3786,159 @@ body.dark-mode .ai-chip-pill {
   color: var(--brand-primary, #3b82f6);
 }
 
+/* Decluttered Header Tools Group (Scan & Labels) */
+.header-tools-group {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.header-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  white-space: nowrap;
+}
+
+.header-tool-btn:hover {
+  background: var(--bg-hover);
+  color: var(--brand-primary, #3b82f6);
+}
+
+/* Compact Role Selector Dropdown Trigger */
+.role-selector-dropdown-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.role-selector-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  white-space: nowrap;
+}
+
+.role-selector-trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-focus, #3b82f6);
+}
+
+.role-selector-trigger.is-simulated {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #d97706;
+}
+
+body.dark-mode .role-selector-trigger.is-simulated {
+  color: #fbbf24;
+}
+
+.role-sim-tag {
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #f59e0b;
+  color: #1e293b;
+  text-transform: uppercase;
+}
+
+/* Role Dropdown Popup Menu */
+.role-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 275px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.35), 0 8px 12px -6px rgba(0, 0, 0, 0.25);
+  padding: 6px;
+  z-index: 1050;
+  animation: dropdownFadeIn 0.15s ease-out;
+}
+
+body.dark-mode .role-dropdown-menu {
+  background: #0f172a !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6) !important;
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.role-dropdown-header {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  padding: 6px 10px 4px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 4px;
+}
+
+.role-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.14s ease;
+  text-align: left;
+}
+
+.role-dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.role-dropdown-item.active {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--brand-primary, #3b82f6);
+}
+
+@media (max-width: 900px) {
+  .header-tool-btn .tool-btn-text {
+    display: none !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .role-selector-trigger .role-trigger-label {
+    display: none !important;
+  }
+}
+
 .role-switcher-header {
   display: inline-flex;
   align-items: center;
