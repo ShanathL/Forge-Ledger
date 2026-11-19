@@ -3895,14 +3895,6 @@ function App() {
     });
   }
 
-  // Clear simulated role if accessing from a regular production account
-  useEffect(() => {
-    if (!isDemoAccount && simulatedRole) {
-      setSimulatedRole(null);
-      try { localStorage.removeItem('forgeledger_simulated_role'); } catch (_) {}
-    }
-  }, [isDemoAccount, simulatedRole]);
-
   // Account Mode & Role Scoping
   // Role simulation is strictly available in the Demo Account sandbox
   const isDemoAccount = Boolean(
@@ -3912,6 +3904,14 @@ function App() {
   );
   const isActualAdmin = !currentUser ||
     ['owner', 'admin', 'plant manager', 'manager'].some(r => String(currentUser.role || '').toLowerCase().includes(r));
+
+  // Clear simulated role if accessing from a regular production account
+  useEffect(() => {
+    if (!isDemoAccount && simulatedRole) {
+      setSimulatedRole(null);
+      try { localStorage.removeItem('forgeledger_simulated_role'); } catch (_) {}
+    }
+  }, [isDemoAccount, simulatedRole]);
 
   // In regular accounts, role simulation is completely disabled: users only see what their assigned role allows
   const canSimulateRoles = isDemoAccount;
