@@ -484,7 +484,7 @@ function PublicLandingPage({ onLogin, onSignup }) {
 }
 
 // Enhanced Asset Valuation Donut Chart (Finished Goods vs Raw Materials)
-function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory }) {
+function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory, canViewFinancials = true }) {
   const [hoveredSlice, setHoveredSlice] = useState(null);
 
   let finishedVal = 0;
@@ -609,7 +609,7 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory 
           fontWeight: '800',
           className: 'pie-center-val',
           fontFamily: 'var(--font-mono)'
-        }, activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)),
+        }, canViewFinancials ? (activeSlice ? formatCurrency(activeSlice.value, currency) : formatCurrency(totalVal, currency)) : (activeSlice ? `%` : ` units`)),
         h('text', {
           x: 120,
           y: activeSlice ? 133 : 135,
@@ -619,7 +619,7 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory 
           className: activeSlice ? '' : 'pie-center-label',
           style: activeSlice ? { fill: activeSlice.color } : undefined,
           letterSpacing: '0.8px'
-        }, activeSlice ? `${activeSlice.name.toUpperCase()} (${activeSlice.percent}%)` : 'FACTORY WEALTH')
+        }, canViewFinancials ? (activeSlice ? ` (%)` : 'FACTORY WEALTH') : (activeSlice ? `` : 'WAREHOUSE STOCK'))
       )
     ),
     h('div', { className: 'pie-legend' },
@@ -654,7 +654,7 @@ function InventoryPieChart({ inventory = [], currency = '₹', onSelectCategory 
             )
           ),
           h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-            h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 } }, formatCurrency(slice.value, currency)),
+            h('span', { className: 'pie-legend-val', style: { fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 } }, canViewFinancials ? formatCurrency(slice.value, currency) : '₹ ••••'),
             h('span', { className: 'pie-legend-pct', style: { fontWeight: 700, background: slice.color, color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 11.5 } }, `${slice.percent}%`)
           )
         );
@@ -2263,6 +2263,9 @@ const ROLE_CONFIGS = {
     badgeClass: 'role-badge-owner',
     icon: '👑',
     color: '#f59e0b',
+    tag: 'SUPERADMIN',
+    chips: ['All 9 Modules', 'Full Ledger & P&L', 'Team Security RBAC'],
+    workspaceTitle: 'Plant Owner Command Center',
     allowedTabs: ['overview', 'inventory', 'sales', 'expenses', 'rawMaterials', 'production', 'payroll', 'reports', 'settings'],
     canViewFinancials: true,
     canEditInventory: true,
@@ -2277,7 +2280,10 @@ const ROLE_CONFIGS = {
     badgeClass: 'role-badge-operator',
     icon: '⚙️',
     color: '#f97316',
-    allowedTabs: ['production', 'rawMaterials', 'inventory', 'overview'],
+    tag: 'SHOP FLOOR',
+    chips: ['Production Runs', 'Masked Unit Costs', 'Material Ingredients'],
+    workspaceTitle: 'Shop Floor & Machining Station',
+    allowedTabs: ['overview', 'production', 'rawMaterials', 'inventory'],
     canViewFinancials: false,
     canEditInventory: false,
     canEditProduction: true,
@@ -2291,7 +2297,10 @@ const ROLE_CONFIGS = {
     badgeClass: 'role-badge-clerk',
     icon: '📦',
     color: '#10b981',
-    allowedTabs: ['inventory', 'rawMaterials', 'production', 'overview'],
+    tag: 'WAREHOUSE',
+    chips: ['Goods Inventory', 'Barcode & QR Studio', 'Stock Reconcile'],
+    workspaceTitle: 'Warehouse Intake & Dispatch Depot',
+    allowedTabs: ['overview', 'inventory', 'rawMaterials', 'production'],
     canViewFinancials: false,
     canEditInventory: true,
     canEditProduction: false,
@@ -2305,6 +2314,9 @@ const ROLE_CONFIGS = {
     badgeClass: 'role-badge-accountant',
     icon: '📊',
     color: '#8b5cf6',
+    tag: 'FINANCE',
+    chips: ['Sales Invoices', 'Vendor Bills OCR', 'Staff Payroll'],
+    workspaceTitle: 'Finance & Tax Compliance Office',
     allowedTabs: ['overview', 'sales', 'expenses', 'payroll', 'reports', 'settings'],
     canViewFinancials: true,
     canEditInventory: false,
@@ -3904,12 +3916,13 @@ function App() {
       addToast('Role changes are locked by your Workspace Admin.', 'warning');
       return;
     }
-    setSimulatedRole(r);
+    const target = (r === 'owner' || !r) ? null : r;
+    setSimulatedRole(target);
     try {
-      if (r) localStorage.setItem('forgeledger_simulated_role', r);
+      if (target) localStorage.setItem('forgeledger_simulated_role', target);
       else localStorage.removeItem('forgeledger_simulated_role');
     } catch (_) {}
-    const cfg = ROLE_CONFIGS[r || 'owner'] || ROLE_CONFIGS.owner;
+    const cfg = ROLE_CONFIGS[target || 'owner'] || ROLE_CONFIGS.owner;
     addToast(`Role view switched to ${cfg.icon} ${cfg.name}`, 'info');
     if (cfg.allowedTabs && !cfg.allowedTabs.includes(activeTab)) {
       setActiveTab(cfg.allowedTabs[0]);
@@ -4498,9 +4511,18 @@ function App() {
         )
       ),
 
-      // Navigation Items (Starts immediately below header; Settings removed as Profile handles account)
+      // Navigation Items (Filtered dynamically by Role-Based Access Control)
       h('nav', { className: 'sidebar-nav' },
-        !sidebarCollapsed && h('div', { className: 'nav-section-title' }, 'WORKSPACE'),
+        !sidebarCollapsed && h('div', {
+          className: 'nav-section-title',
+          style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 6 }
+        },
+          h('span', null, effectiveRole === 'owner' ? 'ENTERPRISE ERP' : `${(roleConfig.tag || effectiveRole).toUpperCase()} WORKSPACE`),
+          effectiveRole !== 'owner' && h('span', {
+            className: `role-badge ${roleConfig.badgeClass}`,
+            style: { fontSize: 9.5, padding: '1px 5px', fontWeight: 800 }
+          }, `${roleConfig.icon} Active`)
+        ),
         [
           { id: 'overview', label: 'Overview', icon: 'overview' },
           { id: 'rawMaterials', label: 'Raw materials', icon: 'rawMaterials' },
@@ -4510,7 +4532,9 @@ function App() {
           { id: 'expenses', label: 'Expenses', icon: 'expenses' },
           { id: 'payroll', label: 'Payroll', icon: 'payroll' },
           { id: 'reports', label: 'Reports', icon: 'reports' }
-        ].map(item =>
+        ]
+        .filter(item => !roleConfig.allowedTabs || roleConfig.allowedTabs.includes(item.id))
+        .map(item =>
           h('a', {
             key: item.id,
             className: `nav-item ${activeTab === item.id ? 'active' : ''}`,
@@ -4632,44 +4656,82 @@ function App() {
                 className: 'role-dropdown-menu',
                 onClick: e => e.stopPropagation()
               },
-                h('div', { className: 'role-dropdown-header' }, 'SIMULATE ROLE VIEW (ADMIN)'),
-                [
-                  { key: 'owner', label: 'Plant Owner / Admin', icon: '👑', desc: 'Full unrestricted governance' },
-                  { key: 'operator', label: 'Shop Floor Operator', icon: '⚙️', desc: 'Production queue & materials only' },
-                  { key: 'clerk', label: 'Warehouse Clerk', icon: '📦', desc: 'Stock inventory & barcode scanning' },
-                  { key: 'accountant', label: 'Accountant & Tax', icon: '📊', desc: 'Invoices, expenses & payroll' }
-                ].map(r =>
-                  h('button', {
-                    key: r.key,
-                    type: 'button',
-                    className: `role-dropdown-item ${effectiveRole === r.key ? 'active' : ''}`,
-                    onClick: () => {
-                      handleSwitchSimulatedRole(r.key === 'owner' ? null : r.key);
-                      setShowRoleDropdown(false);
-                    }
-                  },
-                    h('span', { style: { fontSize: 16 } }, r.icon),
-                    h('div', { style: { textAlign: 'left', flex: 1 } },
-                      h('div', { style: { fontWeight: 700, fontSize: 12 } }, r.label),
-                      h('div', { style: { fontSize: 10.5, opacity: 0.75 } }, r.desc)
-                    ),
-                    effectiveRole === r.key && h('span', { style: { color: '#38bdf8', fontWeight: 800 } }, '✓')
+                // Current User Identity Card
+                h('div', { className: 'role-dropdown-user-card' },
+                  h('div', { className: 'role-dropdown-avatar' }, (currentUser?.name || 'D').charAt(0).toUpperCase()),
+                  h('div', { style: { flex: 1, minWidth: 0 } },
+                    h('div', { className: 'role-dropdown-user-name' }, currentUser?.name || 'Demo User'),
+                    h('div', { className: 'role-dropdown-user-email' }, currentUser?.email || 'demo@rivertonworks.local')
+                  ),
+                  h('span', { className: `role-badge ${ROLE_CONFIGS[normalizeRole(currentUser?.role)].badgeClass}`, style: { fontSize: 10, fontWeight: 700 } },
+                    `${ROLE_CONFIGS[normalizeRole(currentUser?.role)].icon} ${ROLE_CONFIGS[normalizeRole(currentUser?.role)].name.split(' ')[0]}`
                   )
+                ),
+
+                // Perspective Switcher Section
+                h('div', { className: 'role-dropdown-section-header' },
+                  h('span', null, 'WORKSPACE PERSPECTIVE'),
+                  simulatedRole && h('button', {
+                    type: 'button',
+                    className: 'role-reset-link',
+                    onClick: () => handleSwitchSimulatedRole(null)
+                  }, '👑 Reset View')
+                ),
+                h('div', { className: 'role-dropdown-section-desc' },
+                  'Switch roles to experience tailored navigation, permissions, and financial masking:'
+                ),
+
+                // Rich Role Cards
+                h('div', { className: 'role-cards-list' },
+                  Object.values(ROLE_CONFIGS).map(r => {
+                    const isActive = effectiveRole === r.key;
+                    return h('div', {
+                      key: r.key,
+                      className: `role-dropdown-card ${isActive ? 'active' : ''}`,
+                      onClick: () => {
+                        handleSwitchSimulatedRole(r.key === 'owner' ? null : r.key);
+                        setShowRoleDropdown(false);
+                      }
+                    },
+                      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 } },
+                        h('div', { style: { display: 'flex', alignItems: 'center', gap: 7 } },
+                          h('span', { style: { fontSize: 17 } }, r.icon),
+                          h('strong', { style: { fontSize: 12.5, color: 'var(--text-main)' } }, r.name)
+                        ),
+                        isActive ?
+                          h('span', { className: 'role-card-active-tag' }, '✓ Active') :
+                          h('span', { className: 'role-card-tag' }, r.tag || r.key.toUpperCase())
+                      ),
+                      h('div', { style: { fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.35, marginBottom: 6 } }, r.summary),
+                      h('div', { className: 'role-card-chips' },
+                        r.chips ? r.chips.map(chip => h('span', { key: chip, className: 'role-mini-chip' }, chip)) : null
+                      )
+                    );
+                  })
                 ),
 
                 // Admin Role Management Controls
                 h('div', { className: 'role-dropdown-admin-section' },
-                  h('div', { className: 'role-dropdown-header', style: { marginTop: 6 } }, 'ROLE ASSIGNMENT POLICY'),
+                  h('div', { className: 'role-dropdown-section-header', style: { marginTop: 4 } },
+                    h('span', null, 'ROLE GOVERNANCE'),
+                    h('span', { className: `badge ${adminOnlyRoles ? 'badge-success' : 'badge-warning'}`, style: { fontSize: 9.5 } },
+                      adminOnlyRoles ? 'Enforced' : 'Open'
+                    )
+                  ),
                   h('div', {
                     className: 'role-policy-toggle-row',
                     onClick: () => handleToggleAdminOnlyRoles(!adminOnlyRoles),
                     title: 'Toggle whether only Admins can assign roles or allow open simulation'
                   },
-                    h('div', null,
-                      h('div', { style: { fontSize: 11.5, fontWeight: 700, color: 'var(--text-main)' } }, '🛡️ Admin-Only Roles'),
-                      h('div', { style: { fontSize: 10, color: 'var(--text-muted)' } }, adminOnlyRoles ? 'Staff role changes locked' : 'Open simulation active')
+                    h('div', { style: { flex: 1 } },
+                      h('div', { style: { fontSize: 11.5, fontWeight: 700, color: 'var(--text-main)' } }, '🛡️ Enforce Admin-Only Roles'),
+                      h('div', { style: { fontSize: 10, color: 'var(--text-muted)' } },
+                        adminOnlyRoles ? 'Employees cannot switch roles' : 'Open simulation active for all'
+                      )
                     ),
-                    h('span', { className: `badge ${adminOnlyRoles ? 'badge-success' : 'badge-warning'}` }, adminOnlyRoles ? 'Enforced' : 'Open')
+                    h('span', { style: { fontSize: 12, fontWeight: 800, color: adminOnlyRoles ? '#10b981' : '#f59e0b' } },
+                      adminOnlyRoles ? '🔒' : '🔓'
+                    )
                   ),
                   h('button', {
                     type: 'button',
@@ -4680,7 +4742,7 @@ function App() {
                     type: 'button',
                     className: 'role-dropdown-action-btn secondary',
                     onClick: () => { setShowRoleDropdown(false); setActiveTab('settings'); setSettingsTab('team'); }
-                  }, '👥 Manage Team Roster & Roles →')
+                  }, '👥 Team Roster & Roles →')
                 )
               )
             ) :
@@ -4789,6 +4851,69 @@ function App() {
             )
           ),
 
+          // Role-specific Active Workspace Hero Card (shows tailored role mission)
+          effectiveRole !== 'owner' && h('div', {
+            className: `role-workspace-hero-card ${effectiveRole}`,
+            style: {
+              background: effectiveRole === 'operator' ? 'linear-gradient(135deg, rgba(249, 115, 22, 0.14), rgba(234, 88, 12, 0.05))' :
+                          effectiveRole === 'clerk' ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(5, 150, 105, 0.05))' :
+                          'linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(124, 58, 237, 0.05))',
+              border: `1.5px solid ${roleConfig.color}45`,
+              borderRadius: 12,
+              padding: '14px 18px',
+              marginBottom: 20,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap'
+            }
+          },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
+              h('div', {
+                style: {
+                  width: 44,
+                  height: 44,
+                  borderRadius: 10,
+                  background: `${roleConfig.color}25`,
+                  border: `1px solid ${roleConfig.color}50`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 22
+                }
+              }, roleConfig.icon),
+              h('div', null,
+                h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                  h('strong', { style: { fontSize: 14.5, color: 'var(--text-main)' } }, roleConfig.workspaceTitle || `${roleConfig.name} Workspace`),
+                  h('span', { className: `role-badge ${roleConfig.badgeClass}`, style: { fontSize: 10, padding: '2px 7px' } }, `${roleConfig.tag} MODE`)
+                ),
+                h('div', { style: { fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 } },
+                  roleConfig.summary
+                )
+              )
+            ),
+            h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+              roleConfig.canEditProduction && h('button', {
+                className: 'btn btn-sm btn-primary',
+                onClick: () => { setFormData({}); setModalType('production'); }
+              }, '⚡ New Batch'),
+              roleConfig.canEditInventory && h('button', {
+                className: 'btn btn-sm btn-outline',
+                onClick: () => setShowScannerModal(true)
+              }, '📷 Scan Barcode'),
+              roleConfig.canViewFinancials && h('button', {
+                className: 'btn btn-sm btn-primary',
+                onClick: () => { setFormData({}); setModalType('sale'); }
+              }, '+ Create Invoice'),
+              canChangeRole && h('button', {
+                className: 'btn btn-sm btn-outline',
+                style: { fontSize: 11 },
+                onClick: () => handleSwitchSimulatedRole(null)
+              }, '👑 Exit View')
+            )
+          ),
+
           // 4 Metric KPI Cards (Adaptive for Role-Based Access)
           h('div', { className: 'metrics-grid' },
             h('div', { className: 'metric-card' },
@@ -4820,7 +4945,7 @@ function App() {
                 h('span', { className: 'metric-label' }, roleConfig.canViewFinancials ? 'Raw materials value' : 'Raw materials in warehouse'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'rawMaterials' }))
               ),
-              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(rawMaterialsVal) : `${rawMaterials.length || rawMaterialsList.length} items`),
+              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(rawMaterialsVal) : ` units`),
               h('div', { className: 'metric-footer' }, `${rawMaterials.length || rawMaterialsList.length} material type(s) in warehouse`)
             )
           ),
@@ -4869,8 +4994,8 @@ function App() {
             h('div', { className: 'card analytics-card' },
               h('div', { className: 'card-header' },
                 h('div', null,
-                  h('h3', { className: 'card-title' }, 'Total factory wealth breakdown'),
-                  h('div', { className: 'card-subtitle' }, 'Clear split between Finished Goods inventory and Raw Material stock')
+                  h('h3', { className: 'card-title' }, roleConfig.canViewFinancials ? 'Total factory wealth breakdown' : 'Warehouse Inventory Balance'),
+                  h('div', { className: 'card-subtitle' }, roleConfig.canViewFinancials ? 'Clear split between Finished Goods inventory and Raw Material stock' : 'Stock volume ratio between Finished Goods and Raw Materials')
                 ),
                 h('button', {
                   className: 'btn btn-outline',
@@ -4879,7 +5004,7 @@ function App() {
                 }, 'Manage goods →')
               ),
               h('div', { style: { padding: '18px 20px' } },
-                h(InventoryPieChart, { inventory, currency: '₹', onSelectCategory: (tab) => setActiveTab(tab) })
+                h(InventoryPieChart, { inventory, currency: '₹', canViewFinancials: roleConfig.canViewFinancials, onSelectCategory: (tab) => setActiveTab(tab) })
               )
             ),
 
@@ -4949,7 +5074,7 @@ function App() {
                         ),
                         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
                           h('span', { className: `badge ${run.status === 'In progress' ? 'badge-info' : 'badge-warning'}` }, run.status),
-                          run.status === 'In progress' && h('button', {
+                          run.status === 'In progress' && roleConfig.canEditProduction && h('button', {
                             className: 'btn-done-action',
                             title: 'Complete batch',
                             onClick: () => {
@@ -5073,15 +5198,37 @@ function App() {
               )
             ),
 
-            // Quick Actions List (Distinct operational actions, no duplicates)
+            // Quick Actions List (Adaptive by Role)
             h('div', { className: 'card quick-actions-card' },
-              h('h3', { className: 'card-title', style: { marginBottom: 14 } }, 'Quick actions'),
-              [
-                { title: 'Add finished product', desc: 'Register a sellable manufactured product', icon: 'inventory', action: () => { setFormData({ category: 'Finished good' }); setModalType('item'); } },
-                { title: 'Log raw materials', desc: 'Manage factory ingredients and warehouse stock', icon: 'rawMaterials', action: () => setActiveTab('rawMaterials') },
-                { title: 'New production batch', desc: 'Transform raw materials into finished goods', icon: 'production', action: () => { setFormData({}); setModalType('production'); } },
-                { title: 'View reports', desc: 'Review sales, expenses, and profit analytics', icon: 'reports', action: () => setActiveTab('reports') }
-              ].map(item =>
+              h('h3', { className: 'card-title', style: { marginBottom: 14 } },
+                effectiveRole === 'owner' ? 'Enterprise Quick Actions' : `${roleConfig.name.split(' ')[0]} Launchpad`
+              ),
+              (
+                effectiveRole === 'operator' ? [
+                  { title: 'New production batch', desc: 'Schedule batch & log machine materials', icon: 'production', action: () => { setFormData({}); setModalType('production'); } },
+                  { title: 'Check raw materials', desc: 'Inspect metals & shop floor machine stock', icon: 'rawMaterials', action: () => setActiveTab('rawMaterials') },
+                  { title: 'Scan barcode / SKU', desc: 'Scan lot numbers or parts with camera HUD', icon: 'camera', action: () => setShowScannerModal(true) },
+                  { title: 'View production table', desc: 'Monitor active and completed manufacturing runs', icon: 'checkCircle', action: () => setActiveTab('production') }
+                ] :
+                effectiveRole === 'clerk' ? [
+                  { title: 'Barcode & QR Label Studio', desc: 'Design & print thermal and A4 product labels', icon: 'tag', action: () => { setLabelModalItem(null); setShowLabelModal(true); } },
+                  { title: 'Scan inventory count', desc: 'Scan barcodes to increment or decrement stock', icon: 'camera', action: () => setShowScannerModal(true) },
+                  { title: 'Finished goods stock', desc: 'Review manufactured inventory ready for dispatch', icon: 'inventory', action: () => setActiveTab('inventory') },
+                  { title: 'Raw materials intake', desc: 'Check warehouse metals and minimum reorder alerts', icon: 'rawMaterials', action: () => setActiveTab('rawMaterials') }
+                ] :
+                effectiveRole === 'accountant' ? [
+                  { title: 'Create sales invoice', desc: 'Generate customer invoice with GST and PDF print', icon: 'sales', action: () => { setFormData({}); setModalType('sale'); } },
+                  { title: 'Log operating expense', desc: 'Record bills or extract with smart invoice OCR', icon: 'expenses', action: () => { setFormData({}); setModalType('expense'); } },
+                  { title: 'Staff payroll disbursement', desc: 'Review monthly salaries and process payroll', icon: 'payroll', action: () => setActiveTab('payroll') },
+                  { title: 'Financial analytics', desc: 'Inspect monthly revenue, margins, and expense reports', icon: 'reports', action: () => setActiveTab('reports') }
+                ] :
+                [
+                  { title: 'Add finished product', desc: 'Register a sellable manufactured product', icon: 'inventory', action: () => { setFormData({ category: 'Finished good' }); setModalType('item'); } },
+                  { title: 'Log raw materials', desc: 'Manage factory ingredients and warehouse stock', icon: 'rawMaterials', action: () => setActiveTab('rawMaterials') },
+                  { title: 'New production batch', desc: 'Transform raw materials into finished goods', icon: 'production', action: () => { setFormData({}); setModalType('production'); } },
+                  { title: 'View reports', desc: 'Review sales, expenses, and profit analytics', icon: 'reports', action: () => setActiveTab('reports') }
+                ]
+              ).map(item =>
                 h('div', {
                   key: item.title,
                   className: 'quick-action-item',
@@ -5129,7 +5276,7 @@ function App() {
                 className: 'btn btn-outline',
                 onClick: () => { setLabelModalItem(null); setShowLabelModal(true); }
               }, '🏷️ Label Studio'),
-              h('button', {
+              roleConfig.canEditInventory && h('button', {
                 className: 'btn btn-primary',
                 onClick: () => { setFormData({ category: 'Finished good' }); setModalType('item'); }
               },
@@ -5158,11 +5305,11 @@ function App() {
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Finished goods valuation'),
+                h('span', { className: 'metric-label' }, roleConfig.canViewFinancials ? 'Finished goods valuation' : 'Stock status'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'sales' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(finishedGoodsVal)),
-              h('div', { className: 'metric-footer' }, 'Production cost asset value')
+              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(finishedGoodsVal) : `${finishedGoodsUnits} units`),
+              h('div', { className: 'metric-footer' }, roleConfig.canViewFinancials ? 'Production cost asset value' : '🔒 Valuation masked for floor role')
             )
           ),
 
@@ -5233,9 +5380,9 @@ function App() {
                           }, `${qty} ${item.unit || 'units'} ${isLow ? '⚠️ Low' : '✓ Good'}`)
                         ),
                         h('td', { style: { color: '#64748b' } }, item.unit || 'units'),
-                        h('td', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(cost)),
-                        h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#2563eb' } }, formatCurrency(sell)),
-                        h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 700 } }, formatCurrency(lineVal)),
+                        h('td', { style: { fontFamily: 'var(--font-mono)' } }, roleConfig.canViewFinancials ? formatCurrency(cost) : '₹ ••••'),
+                        h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#2563eb' } }, roleConfig.canViewFinancials ? formatCurrency(sell) : '₹ ••••'),
+                        h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 700 } }, roleConfig.canViewFinancials ? formatCurrency(lineVal) : '₹ ••••'),
                         h('td', { style: { textAlign: 'right' } },
                           h('div', { style: { display: 'inline-flex', gap: 6 } },
                             h('button', {
@@ -5244,12 +5391,12 @@ function App() {
                               title: 'Print Barcode & QR Label',
                               onClick: () => { setLabelModalItem(item); setShowLabelModal(true); }
                             }, '🏷️ Label'),
-                            h('button', {
+                            roleConfig.canEditInventory && h('button', {
                               className: 'btn btn-outline',
                               style: { padding: '4px 8px', fontSize: 11.5 },
                               onClick: () => { setFormData(item); setModalType('item'); }
                             }, 'Edit'),
-                            h('button', {
+                            roleConfig.canEditInventory && h('button', {
                               className: 'btn btn-danger-outline',
                               style: { padding: '4px 8px' },
                               onClick: () => handleDelete('inventory', item.id)
@@ -5622,11 +5769,11 @@ function App() {
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Raw materials valuation'),
+                h('span', { className: 'metric-label' }, roleConfig.canViewFinancials ? 'Raw materials valuation' : 'Stock inventory count'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'inventory' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(rawMaterialsVal)),
-              h('div', { className: 'metric-footer' }, 'Capital in raw warehouse stock')
+              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(rawMaterialsVal) : ` units`),
+              h('div', { className: 'metric-footer' }, roleConfig.canViewFinancials ? 'Capital in raw warehouse stock' : '🔒 Valuation masked for floor role')
             )
           ),
 
@@ -5647,7 +5794,12 @@ function App() {
           }),
 
           // Add Raw Material Inline Form (Fig. 7)
-          h('div', { className: 'inline-form-card' },
+          !roleConfig.canEditInventory ?
+            h('div', {
+              className: 'card',
+              style: { padding: '14px 18px', background: 'var(--bg-secondary)', border: '1px dashed var(--border-light)', borderRadius: 10, fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }
+            }, '🔒 Raw material cataloging & intake is restricted to Warehouse Clerks and Admins. Operators consume inventory via active batch runs.') :
+            h('div', { className: 'inline-form-card' },
             h('h3', { style: { fontSize: 14, fontWeight: 700, color: '#0f172a' } }, 'Add raw material'),
             h('form', { onSubmit: handleAddRawMaterial, className: 'inline-form-grid' },
               h('div', { className: 'form-group' },
@@ -5730,7 +5882,7 @@ function App() {
                         h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 600 } }, mat.sku),
                         h('td', { style: { fontWeight: 700 } }, mat.item_name),
                         h('td', { style: { fontWeight: 700, color: '#059669' } }, `${mat.quantity} ${mat.unit}`),
-                        h('td', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(mat.unit_cost)),
+                        h('td', { style: { fontFamily: 'var(--font-mono)' } }, roleConfig.canViewFinancials ? formatCurrency(mat.unit_cost) : '₹ ••••'),
                         h('td', { style: { textAlign: 'right' } },
                           h('div', { style: { display: 'inline-flex', gap: 6 } },
                             h('button', {
@@ -5739,7 +5891,7 @@ function App() {
                               title: 'Print Raw Material Barcode & QR Label',
                               onClick: () => { setLabelModalItem(mat); setShowLabelModal(true); }
                             }, '🏷️ Label'),
-                            h('button', {
+                            roleConfig.canEditInventory && h('button', {
                               className: 'btn btn-danger-outline',
                               style: { padding: '4px 8px' },
                               onClick: () => handleDelete('raw-materials', mat.id)
@@ -5772,7 +5924,7 @@ function App() {
                   status: 'Status'
                 })
               }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
-              h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('production'); } },
+              roleConfig.canEditProduction && h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('production'); } },
                 h(Icon, { name: 'plus' }), 'New production run'
               )
             )
@@ -5883,6 +6035,7 @@ function App() {
                           }, run.status)
                         ),
                         h('td', { style: { textAlign: 'right' } },
+                          roleConfig.canEditProduction ?
                           h('div', { style: { display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' } },
                             run.status !== 'Completed' && h('button', {
                               className: 'btn btn-done-action',
@@ -5913,7 +6066,8 @@ function App() {
                                 }
                               }
                             }, h(Icon, { name: 'trash', size: 13 }))
-                          )
+                            ) :
+                            h('span', { className: 'badge', style: { fontSize: 10.5 } }, 'View Only')
                         )
                       )
                     )
