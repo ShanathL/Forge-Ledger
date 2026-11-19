@@ -602,6 +602,216 @@ class DatabaseManager {
     return this.data.companies[idx];
   }
 
+  async getTeamMembers(companyId) {
+    const compId = Number(companyId);
+    const company = await this.getCompanyById(compId);
+    const ownerId = company ? Number(company.owner_user_id) : 1;
+
+    const defaultTeam = [
+      {
+        name: 'Ramesh Kumar',
+        email: 'ramesh.operator@rivertonworks.local',
+        phone: '+91 98765 11223',
+        role: 'operator',
+        department: 'Shop Floor & Machining',
+        picture: 'gradient:from-amber-500 to-orange-600'
+      },
+      {
+        name: 'Suresh Patel',
+        email: 'suresh.clerk@rivertonworks.local',
+        phone: '+91 98765 33445',
+        role: 'clerk',
+        department: 'Warehouse & Logistics',
+        picture: 'gradient:from-emerald-500 to-teal-600'
+      },
+      {
+        name: 'Priya Nair',
+        email: 'priya.accountant@rivertonworks.local',
+        phone: '+91 98765 55667',
+        role: 'accountant',
+        department: 'Accounts & Tax Compliance',
+        picture: 'gradient:from-indigo-500 to-purple-600'
+      }
+    ];
+
+    if (this.useMySQL) {
+      let members = await mysql.query(
+        'SELECT id, name, email, phone, role, department, bio, emergency_contact, picture, company_id, created_at, updated_at FROM users WHERE company_id = ? ORDER BY id ASC',
+        [compId]
+      );
+
+      if (members.length <= 1) {
+        for (const tm of defaultTeam) {
+          const [exists] = await mysql.query('SELECT id FROM users WHERE email = ?', [tm.email]);
+          if (!exists || exists.length === 0) {
+            await mysql.query(
+              'INSERT INTO users (name, email, phone, role, department, picture, company_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+              [tm.name, tm.email, tm.phone, tm.role, tm.department, tm.picture, compId, bcrypt.hashSync('password123', 10)]
+            );
+          }
+        }
+        members = await mysql.query(
+          'SELECT id, name, email, phone, role, department, bio, emergency_contact, picture, company_id, created_at, updated_at FROM users WHERE company_id = ? ORDER BY id ASC',
+          [compId]
+        );
+      }
+
+      return members.map(m => ({
+        ...m,
+        is_owner: Number(m.id) === ownerId,
+        status: 'Active'
+      }));
+    }
+
+    let members = this.data.users.filter(u => Number(u.company_id) === compId);
+    if (members.length <= 1) {
+      for (const tm of defaultTeam) {
+        const already = this.data.users.find(u => u.email === tm.email);
+        if (!already) {
+          const newId = this.nextId('user');
+          const newUser = {
+            id: newId,
+            ...tm,
+            company_id: compId,
+            password_hash: bcrypt.hashSync('password123', 10),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          this.data.users.push(newUser);
+        }
+      }
+      this.saveJson();
+      members = this.data.users.filter(u => Number(u.company_id) === compId);
+    }
+
+    return members.map(m => {
+      const safe = { ...m };
+      delete safe.password_hash;
+      safe.is_owner = Number(m.id) === ownerId;
+      safe.status = 'Active';
+      return safe;
+    });
+  }
+
+  async inviteTeamMember(companyId, { name, email, role, department, phone }) {
+    const compId = Number(companyId);
+    if (!name || !name.trim()) throw new Error('Member name is required');
+    if (!email || !email.includes('@')) throw new Error('Valid email address is required');
+
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanRole = ['owner', 'operator', 'clerk', 'accountant'].includes(role) ? role : 'operator';
+    const cleanDept = (department || 'Operations').trim();
+    const cleanPhone = (phone || '').trim();
+
+    if (this.useMySQL) {
+      const [existing] = await mysql.query('SELECT id, company_id FROM users WHERE email = ?', [cleanEmail]);
+      if (existing && existing.length > 0) {
+        if (Number(existing[0].company_id) === compId) {
+          throw new Error(`A team member with email ${cleanEmail} is already in this company.`);
+        }
+        await mysql.query('UPDATE users SET company_id = ?, role = ?, department = ? WHERE id = ?', [compId, cleanRole, cleanDept, existing[0].id]);
+        const [updated] = await mysql.query('SELECT id, name, email, phone, role, department, picture, company_id, created_at FROM users WHERE id = ?', [existing[0].id]);
+        return { ...updated[0], is_owner: false, status: 'Active' };
+      }
+
+      const res = await mysql.query(
+        'INSERT INTO users (name, email, phone, role, department, picture, company_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+        [name.trim(), cleanEmail, cleanPhone, cleanRole, cleanDept, '', compId, bcrypt.hashSync('password123', 10)]
+      );
+      return {
+        id: res.insertId,
+        name: name.trim(),
+        email: cleanEmail,
+        phone: cleanPhone,
+        role: cleanRole,
+        department: cleanDept,
+        company_id: compId,
+        is_owner: false,
+        status: 'Active',
+        created_at: new Date().toISOString()
+      };
+    }
+
+    const existing = this.data.users.find(u => u.email.toLowerCase() === cleanEmail);
+    if (existing && Number(existing.company_id) === compId) {
+      throw new Error(`A team member with email ${cleanEmail} is already in this company.`);
+    }
+
+    const newId = this.nextId('user');
+    const newMember = {
+      id: newId,
+      name: name.trim(),
+      email: cleanEmail,
+      phone: cleanPhone,
+      role: cleanRole,
+      department: cleanDept,
+      picture: '',
+      company_id: compId,
+      password_hash: bcrypt.hashSync('password123', 10),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    this.data.users.push(newMember);
+    this.saveJson();
+
+    const safe = { ...newMember };
+    delete safe.password_hash;
+    safe.is_owner = false;
+    safe.status = 'Active';
+    return safe;
+  }
+
+  async updateTeamMemberRole(companyId, memberId, { role, department }) {
+    const compId = Number(companyId);
+    const mId = Number(memberId);
+    const company = await this.getCompanyById(compId);
+    if (company && Number(company.owner_user_id) === mId) {
+      throw new Error('Cannot modify role for the primary workspace owner.');
+    }
+
+    const cleanRole = ['owner', 'operator', 'clerk', 'accountant'].includes(role) ? role : 'operator';
+
+    if (this.useMySQL) {
+      await mysql.query('UPDATE users SET role = ?, department = COALESCE(?, department) WHERE id = ? AND company_id = ?', [cleanRole, department || null, mId, compId]);
+      const [rows] = await mysql.query('SELECT id, name, email, phone, role, department, picture, company_id FROM users WHERE id = ?', [mId]);
+      if (!rows || rows.length === 0) throw new Error('Team member not found');
+      return { ...rows[0], is_owner: false, status: 'Active' };
+    }
+
+    const user = this.data.users.find(u => Number(u.id) === mId && Number(u.company_id) === compId);
+    if (!user) throw new Error('Team member not found');
+    user.role = cleanRole;
+    if (department !== undefined) user.department = department.trim();
+    user.updated_at = new Date().toISOString();
+    this.saveJson();
+
+    const safe = { ...user };
+    delete safe.password_hash;
+    safe.is_owner = false;
+    safe.status = 'Active';
+    return safe;
+  }
+
+  async removeTeamMember(companyId, memberId) {
+    const compId = Number(companyId);
+    const mId = Number(memberId);
+    const company = await this.getCompanyById(compId);
+    if (company && Number(company.owner_user_id) === mId) {
+      throw new Error('Cannot remove the primary workspace owner.');
+    }
+
+    if (this.useMySQL) {
+      await mysql.query('DELETE FROM users WHERE id = ? AND company_id = ?', [mId, compId]);
+      return true;
+    }
+
+    const idx = this.data.users.findIndex(u => Number(u.id) === mId && Number(u.company_id) === compId);
+    if (idx === -1) throw new Error('Team member not found');
+    this.data.users.splice(idx, 1);
+    this.saveJson();
+    return true;
+  }
+
   // Helper to extract active company id
   async resolveCompanyId(userId, companyId) {
     if (companyId) return Number(companyId);

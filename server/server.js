@@ -22,6 +22,7 @@ const reportRoutes = require('./routes/reports');
 const settingsRoutes = require('./routes/settings');
 const companyRoutes = require('./routes/companies');
 const aiRoutes = require('./routes/ai');
+const teamRoutes = require('./routes/team');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -71,6 +72,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/team', teamRoutes);
 
 // SPA client fallback
 app.get('*', (req, res) => {

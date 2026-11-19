@@ -1224,6 +1224,9 @@ function CommandPalette({
     ];
 
     const quickActions = [
+      { id: 'act-scan', type: 'Scanner', title: '📷 Scan Barcode / QR Code (Camera & Mobile)', action: 'barcodeScanner', icon: 'zap' },
+      { id: 'act-label', type: 'Studio', title: '🏷️ Barcode & QR Label Studio (Thermal & A4 Print)', action: 'labelStudio', icon: 'zap' },
+      { id: 'act-team', type: 'RBAC', title: '👥 Manage Workshop Team & Role Permissions', action: 'team', icon: 'settings' },
       { id: 'act-ai-analyst', type: 'AI Action', title: '✦ Ask ForgeAI Business Analyst (Margins, Costs & Risks)', action: 'aiAnalyst', icon: 'zap' },
       { id: 'act-ai-ocr', type: 'AI Action', title: '⚡ Scan Vendor Bill with AI OCR (Auto-Expense)', action: 'ocr', icon: 'zap' },
       { id: 'act-ai-forecast', type: 'AI Action', title: '📊 View AI Demand Forecast & Raw Material Runway', action: 'forecast', icon: 'production' },
@@ -2159,6 +2162,886 @@ function AiAnalystDrawer({ isOpen, onClose, initialQuery = '', currency = '₹' 
   );
 }
 
+// ============================================================
+// BARCODE (CODE 128) & 2D QR CODE VECTOR SVG ENGINES
+// ============================================================
+const CODE128_PATTERNS = [
+  '212222', '222122', '222221', '121223', '121322', '131222', '122213', '122312', '132212', '221213',
+  '221312', '231212', '112232', '122132', '122231', '113222', '123122', '123221', '223211', '221132',
+  '221231', '213212', '223112', '312131', '311222', '321122', '321221', '312212', '322112', '322211',
+  '212123', '212321', '232121', '111323', '131123', '131321', '112313', '132113', '132311', '211313',
+  '231113', '231311', '112133', '112331', '132131', '113123', '113321', '133121', '313121', '211331',
+  '231131', '213113', '213311', '213131', '311123', '311321', '331121', '312113', '312311', '332111',
+  '314111', '221411', '431111', '111224', '111422', '121124', '121421', '141122', '141221', '112214',
+  '112412', '122114', '122411', '142112', '142211', '241211', '221114', '413111', '241112', '134111',
+  '111242', '121142', '121241', '114212', '124112', '124211', '411212', '421112', '421211', '212141',
+  '214121', '412121', '111143', '111341', '131141', '114113', '114311', '411113', '411311', '113141',
+  '114131', '311141', '411131', '211412', '211214', '211232', '2331112'
+];
+
+function generateCode128SVG(text, options = {}) {
+  const height = options.height || 48;
+  const barWidth = options.barWidth || 2;
+  const quietZone = 8;
+  const str = String(text || '').trim();
+  if (!str) return '';
+
+  const codes = [104]; // START B
+  let checksum = 104;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) - 32;
+    if (code >= 0 && code <= 95) {
+      codes.push(code);
+      checksum += code * (i + 1);
+    }
+  }
+  codes.push(checksum % 103);
+  codes.push(106); // STOP
+
+  const rects = [];
+  let currentX = quietZone;
+  for (const code of codes) {
+    const pattern = CODE128_PATTERNS[code] || '111111';
+    let isBar = true;
+    for (let j = 0; j < pattern.length; j++) {
+      const w = parseInt(pattern[j], 10) * barWidth;
+      if (isBar) {
+        rects.push(`<rect x="${currentX}" y="0" width="${w}" height="${height}" fill="currentColor" />`);
+      }
+      currentX += w;
+      isBar = !isBar;
+    }
+  }
+  const totalWidth = currentX + quietZone;
+  return `<svg viewBox="0 0 ${totalWidth} ${height}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:${height}px;">${rects.join('')}</svg>`;
+}
+
+function generateQRCodeSVG(text) {
+  const str = String(text || '').trim();
+  if (!str) return '';
+  try {
+    if (typeof window !== 'undefined' && window.qrcode) {
+      const qr = window.qrcode(0, 'M');
+      qr.addData(str);
+      qr.make();
+      return qr.createSvgTag({ scalable: true, margin: 1 });
+    }
+  } catch (err) {
+    console.warn('QR code generator note:', err.message);
+  }
+  return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;"><rect width="40" height="40" fill="#000"/><rect x="4" y="4" width="32" height="32" fill="#fff"/><rect x="8" y="8" width="8" height="8" fill="#000"/><rect x="24" y="8" width="8" height="8" fill="#000"/><rect x="8" y="24" width="8" height="8" fill="#000"/></svg>`;
+}
+
+function playScanChime(success = true) {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(success ? 880 : 300, ctx.currentTime);
+    if (success) {
+      osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.09);
+    }
+    gain.gain.setValueAtTime(0.16, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.16);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.16);
+  } catch (_) {}
+}
+
+// ============================================================
+// RBAC ROLES CONFIGURATION & ACCESS CONTROL GUARDS
+// ============================================================
+const ROLE_CONFIGS = {
+  owner: {
+    key: 'owner',
+    name: 'Plant Owner / Admin',
+    badgeClass: 'role-badge-owner',
+    icon: '👑',
+    color: '#f59e0b',
+    allowedTabs: ['overview', 'inventory', 'sales', 'expenses', 'rawMaterials', 'production', 'payroll', 'reports', 'settings'],
+    canViewFinancials: true,
+    canEditInventory: true,
+    canEditProduction: true,
+    canDisbursePayroll: true,
+    canManageTeam: true,
+    summary: 'Full superadmin control over all company financials, production machinery, shop floor inventory, and user privileges.'
+  },
+  operator: {
+    key: 'operator',
+    name: 'Shop Floor Operator',
+    badgeClass: 'role-badge-operator',
+    icon: '⚙️',
+    color: '#f97316',
+    allowedTabs: ['production', 'rawMaterials', 'inventory', 'overview'],
+    canViewFinancials: false,
+    canEditInventory: false,
+    canEditProduction: true,
+    canDisbursePayroll: false,
+    canManageTeam: false,
+    summary: 'Dedicated to machine shop floor queues, batch logging, and material availability. Financial totals and margins are strictly masked.'
+  },
+  clerk: {
+    key: 'clerk',
+    name: 'Warehouse & Stock Clerk',
+    badgeClass: 'role-badge-clerk',
+    icon: '📦',
+    color: '#10b981',
+    allowedTabs: ['inventory', 'rawMaterials', 'production', 'overview'],
+    canViewFinancials: false,
+    canEditInventory: true,
+    canEditProduction: false,
+    canDisbursePayroll: false,
+    canManageTeam: false,
+    summary: 'Focused on physical warehouse intake, barcode & QR scanning, label printing, and stock count increments/decrements.'
+  },
+  accountant: {
+    key: 'accountant',
+    name: 'Accountant & Compliance',
+    badgeClass: 'role-badge-accountant',
+    icon: '📊',
+    color: '#8b5cf6',
+    allowedTabs: ['overview', 'sales', 'expenses', 'payroll', 'reports', 'settings'],
+    canViewFinancials: true,
+    canEditInventory: false,
+    canEditProduction: false,
+    canDisbursePayroll: true,
+    canManageTeam: false,
+    summary: 'Authorized for sales invoices, operating expenses, vendor OCR receipts, tax/GST compliance schedules, and payroll disbursements.'
+  }
+};
+
+function normalizeRole(roleStr) {
+  if (!roleStr) return 'owner';
+  const r = String(roleStr).toLowerCase();
+  if (r.includes('operat') || r.includes('machin') || r.includes('technician')) return 'operator';
+  if (r.includes('clerk') || r.includes('wareh') || r.includes('stock') || r.includes('logist')) return 'clerk';
+  if (r.includes('account') || r.includes('financ') || r.includes('cpa') || r.includes('tax') || r.includes('bookkeep')) return 'accountant';
+  return 'owner';
+}
+
+function AccessRestrictedCard({ role, allowedRoles = ['Owner', 'Accountant'], onReset }) {
+  const currentCfg = ROLE_CONFIGS[role] || ROLE_CONFIGS.owner;
+  return h('div', { className: 'access-restricted-card' },
+    h('div', { className: 'restricted-lock-icon' }, '🔒'),
+    h('h2', { className: 'restricted-title' }, 'Access Restricted to Financial & Management Staff'),
+    h('p', { className: 'restricted-desc' },
+      'This ledger view is restricted to ',
+      allowedRoles.join(' and '),
+      ' permissions. Your workspace view is currently active as ',
+      h('span', { className: `role-badge ${currentCfg.badgeClass}`, style: { margin: '0 4px' } }, `${currentCfg.icon} ${currentCfg.name}`),
+      '.'
+    ),
+    h('p', { style: { fontSize: 12, color: 'var(--text-muted)', marginTop: 8 } },
+      'Operators and Clerks have shop-floor and inventory focus without exposure to sensitive business margins or payroll distributions.'
+    ),
+    h('div', { style: { marginTop: 20, display: 'flex', gap: 10, justifyContent: 'center' } },
+      h('button', {
+        className: 'btn btn-primary',
+        onClick: onReset
+      }, '👑 Return to Owner View')
+    )
+  );
+}
+
+// ============================================================
+// BARCODE & QR CODE LABEL STUDIO MODAL
+// ============================================================
+function BarcodeLabelModal({
+  isOpen,
+  onClose,
+  initialItem,
+  finishedGoods = [],
+  rawMaterials = [],
+  company,
+  onOpenScanner
+}) {
+  if (!isOpen) return null;
+
+  const allItems = useMemo(() => {
+    const list = [];
+    finishedGoods.forEach(g => list.push({
+      id: g.id,
+      name: g.item_name || g.name,
+      sku: g.sku || `FG-${g.id}`,
+      type: 'Finished good',
+      price: (Number(g.unit_cost) || 0) * 1.3,
+      unit: g.unit || 'units',
+      raw: g
+    }));
+    rawMaterials.forEach(m => list.push({
+      id: m.id,
+      name: m.item_name || m.name,
+      sku: m.sku || `RM-${m.id}`,
+      type: 'Raw material',
+      price: Number(m.unit_cost) || 0,
+      unit: m.unit || 'kg',
+      raw: m
+    }));
+    return list;
+  }, [finishedGoods, rawMaterials]);
+
+  const [selectedSku, setSelectedSku] = useState(() => {
+    if (initialItem && initialItem.sku) return initialItem.sku;
+    if (allItems.length > 0) return allItems[0].sku;
+    return 'FG-AB-204';
+  });
+
+  const [format, setFormat] = useState('single');
+  const [showBarcode, setShowBarcode] = useState(true);
+  const [showQr, setShowQr] = useState(true);
+  const [showPrice, setShowPrice] = useState(true);
+  const [showCompany, setShowCompany] = useState(true);
+  const [copies, setCopies] = useState(24);
+
+  const currentItem = useMemo(() => {
+    return allItems.find(it => it.sku === selectedSku) || allItems[0] || {
+      id: 1,
+      name: 'Assembly bracket',
+      sku: 'FG-AB-204',
+      type: 'Finished good',
+      price: 370.5,
+      unit: 'units'
+    };
+  }, [allItems, selectedSku]);
+
+  const barcodeSvgHtml = useMemo(() => {
+    return generateCode128SVG(currentItem.sku, { height: format === 'compact' ? 36 : 46, barWidth: 2 });
+  }, [currentItem.sku, format]);
+
+  const qrSvgHtml = useMemo(() => {
+    return generateQRCodeSVG(`SKU:${currentItem.sku}|ITEM:${currentItem.name}|COMPANY:${company?.name || 'Riverton Works'}`);
+  }, [currentItem, company]);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleDownloadSvg = () => {
+    const svgContent = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="360" height="220" viewBox="0 0 360 220">
+        <rect width="360" height="220" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+        <text x="16" y="28" font-family="sans-serif" font-size="12" font-weight="bold" fill="#0f172a">${(company?.name || 'Riverton Works').toUpperCase()}</text>
+        <text x="344" y="28" text-anchor="end" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748b">${currentItem.type.toUpperCase()}</text>
+        <line x1="16" y1="36" x2="344" y2="36" stroke="#0f172a" stroke-width="1.5"/>
+        <text x="16" y="60" font-family="sans-serif" font-size="16" font-weight="bold" fill="#0f172a">${currentItem.name}</text>
+        <text x="16" y="80" font-family="monospace" font-size="13" font-weight="bold" fill="#2563eb">${currentItem.sku}</text>
+        <g transform="translate(16, 92)">${barcodeSvgHtml}</g>
+        <text x="120" y="152" font-family="monospace" font-size="10" letter-spacing="2" fill="#000">${currentItem.sku}</text>
+        <g transform="translate(268, 86) scale(1.4)">${qrSvgHtml}</g>
+        <line x1="16" y1="184" x2="344" y2="184" stroke="#e2e8f0" stroke-width="1"/>
+        <text x="16" y="202" font-family="sans-serif" font-size="11" fill="#475569">ForgeLedger Verified</text>
+        <text x="344" y="202" text-anchor="end" font-family="monospace" font-size="13" font-weight="bold" fill="#0f172a">₹${Number(currentItem.price).toFixed(2)} / ${currentItem.unit}</text>
+      </svg>
+    `;
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `label-${currentItem.sku.toLowerCase()}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const renderSingleSticker = (key = 'single') => {
+    return h('div', {
+      key,
+      className: `sticker-label-card ${format === 'compact' ? 'sticker-single-compact' : 'sticker-single-50x30'}`
+    },
+      showCompany && h('div', { className: 'sticker-header' },
+        h('span', { className: 'sticker-brand' }, company?.name || 'Riverton Works'),
+        h('span', { className: 'sticker-category-tag' }, currentItem.type)
+      ),
+      h('div', null,
+        h('div', { className: 'sticker-title' }, currentItem.name),
+        h('div', { className: 'sticker-sku-badge' }, currentItem.sku)
+      ),
+      h('div', { className: 'sticker-codes-row' },
+        showBarcode && h('div', { className: 'sticker-barcode-wrap' },
+          h('div', { dangerouslySetInnerHTML: { __html: barcodeSvgHtml } }),
+          h('div', { className: 'sticker-barcode-text' }, currentItem.sku)
+        ),
+        showQr && h('div', {
+          className: 'sticker-qr-wrap',
+          dangerouslySetInnerHTML: { __html: qrSvgHtml }
+        })
+      ),
+      h('div', { className: 'sticker-footer' },
+        h('span', null, 'ForgeLedger Tag'),
+        showPrice && h('span', { className: 'sticker-price-tag' }, `₹${Number(currentItem.price).toFixed(2)} / ${currentItem.unit}`)
+      )
+    );
+  };
+
+  return h('div', { className: 'modal-backdrop', onClick: onClose },
+    h('div', {
+      className: 'modal-content label-studio-modal',
+      onClick: e => e.stopPropagation()
+    },
+      // Header
+      h('div', { className: 'modal-header' },
+        h('div', null,
+          h('h2', { className: 'modal-title' }, '🏷️ Barcode & QR Code Label Studio'),
+          h('div', { className: 'modal-subtitle' }, 'Design and print physical vector sticker labels for thermal rolls and standard A4 sheets.')
+        ),
+        h('div', { style: { display: 'flex', gap: 8 } },
+          onOpenScanner && h('button', {
+            className: 'btn btn-outline',
+            onClick: () => { onClose(); onOpenScanner(); }
+          }, '📷 Camera Scanner'),
+          h('button', { className: 'modal-close-btn', onClick: onClose }, '✕')
+        )
+      ),
+
+      // Studio Grid Body
+      h('div', { className: 'label-studio-grid' },
+        // Left Column: Configuration Controls
+        h('div', { className: 'label-config-card' },
+          h('label', { className: 'form-label' }, 'Select Inventory SKU / Material'),
+          h('select', {
+            className: 'form-input',
+            value: selectedSku,
+            onChange: e => setSelectedSku(e.target.value)
+          },
+            allItems.map(it => h('option', { key: it.sku, value: it.sku }, `${it.sku} - ${it.name} (${it.type})`))
+          ),
+
+          h('div', { style: { marginTop: 14 } },
+            h('label', { className: 'form-label' }, 'Print Format / Layout'),
+            h('div', { style: { display: 'flex', gap: 6, marginTop: 4 } },
+              [
+                { id: 'single', label: 'Single 50×30mm' },
+                { id: 'sheet', label: 'A4 Sheet (3×8)' },
+                { id: 'compact', label: 'Bin 40×25mm' }
+              ].map(f =>
+                h('button', {
+                  key: f.id,
+                  type: 'button',
+                  className: `btn ${format === f.id ? 'btn-primary' : 'btn-outline'}`,
+                  style: { flex: 1, padding: '6px 8px', fontSize: 11.5 },
+                  onClick: () => setFormat(f.id)
+                }, f.label)
+              )
+            )
+          ),
+
+          h('div', { style: { marginTop: 16 } },
+            h('label', { className: 'form-label' }, 'Label Elements'),
+            h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 } },
+              h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' } },
+                h('input', { type: 'checkbox', checked: showBarcode, onChange: e => setShowBarcode(e.target.checked) }),
+                'Code 128 1D Barcode'
+              ),
+              h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' } },
+                h('input', { type: 'checkbox', checked: showQr, onChange: e => setShowQr(e.target.checked) }),
+                '2D Vector QR Code'
+              ),
+              h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' } },
+                h('input', { type: 'checkbox', checked: showPrice, onChange: e => setShowPrice(e.target.checked) }),
+                'Unit Price / Cost'
+              ),
+              h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' } },
+                h('input', { type: 'checkbox', checked: showCompany, onChange: e => setShowCompany(e.target.checked) }),
+                'Company Brand Header'
+              )
+            )
+          ),
+
+          format === 'sheet' && h('div', { style: { marginTop: 14 } },
+            h('label', { className: 'form-label' }, 'Labels per Sheet Grid'),
+            h('input', {
+              type: 'number',
+              className: 'form-input',
+              min: 1,
+              max: 48,
+              value: copies,
+              onChange: e => setCopies(Math.max(1, parseInt(e.target.value) || 1))
+            })
+          ),
+
+          h('div', { style: { marginTop: 22, display: 'flex', flexDirection: 'column', gap: 8 } },
+            h('button', {
+              className: 'btn btn-primary',
+              style: { padding: '10px 16px', fontWeight: 700 },
+              onClick: handlePrint
+            }, '🖨️ Print Labels / Save PDF'),
+            h('button', {
+              className: 'btn btn-outline',
+              style: { padding: '8px 14px' },
+              onClick: handleDownloadSvg
+            }, '📥 Download Vector SVG')
+          )
+        ),
+
+        // Right Column: Live Printable Preview
+        h('div', { className: 'label-preview-panel' },
+          h('div', { style: { fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 } },
+            format === 'sheet' ? `A4 Sticker Sheet Preview (${copies} Labels · 3 Columns)` : 'Single Label Preview (Actual Physical Scale)'
+          ),
+
+          format === 'sheet' ?
+            h('div', { className: 'sticker-sheet-preview-grid' },
+              Array.from({ length: copies }).map((_, idx) => renderSingleSticker(`sheet-item-${idx}`))
+            ) :
+            renderSingleSticker('single-preview')
+        )
+      ),
+
+      // Hidden Container for Print CSS Output
+      h('div', { className: 'printable-labels-container' },
+        format === 'sheet' ?
+          h('div', { className: 'sticker-sheet-preview-grid', style: { boxShadow: 'none', border: 'none', padding: 0 } },
+            Array.from({ length: copies }).map((_, idx) => renderSingleSticker(`print-${idx}`))
+          ) :
+          renderSingleSticker('print-single')
+      )
+    )
+  );
+}
+
+// ============================================================
+// MOBILE & CAMERA BARCODE SCANNER MODAL
+// ============================================================
+function BarcodeScannerModal({
+  isOpen,
+  onClose,
+  finishedGoods = [],
+  rawMaterials = [],
+  onUpdateStock,
+  onAddToInvoice,
+  onOpenLabelStudio
+}) {
+  if (!isOpen) return null;
+
+  const videoRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState('environment');
+  const [manualInput, setManualInput] = useState('');
+  const [scannedItem, setScannedItem] = useState(null);
+  const [adjustMessage, setAdjustMessage] = useState('');
+
+  const allItems = useMemo(() => {
+    const list = [];
+    finishedGoods.forEach(g => list.push({
+      id: g.id,
+      name: g.item_name || g.name,
+      sku: g.sku || `FG-${g.id}`,
+      type: 'Finished good',
+      category: g.category || 'Finished good',
+      quantity: Number(g.quantity) || 0,
+      unit: g.unit || 'units',
+      unit_cost: Number(g.unit_cost) || 0,
+      price: (Number(g.unit_cost) || 0) * 1.3,
+      isRaw: false
+    }));
+    rawMaterials.forEach(m => list.push({
+      id: m.id,
+      name: m.item_name || m.name,
+      sku: m.sku || `RM-${m.id}`,
+      type: 'Raw material',
+      category: 'Raw material',
+      quantity: Number(m.quantity) || 0,
+      unit: m.unit || 'kg',
+      unit_cost: Number(m.unit_cost) || 0,
+      price: Number(m.unit_cost) || 0,
+      isRaw: true
+    }));
+    return list;
+  }, [finishedGoods, rawMaterials]);
+
+  useEffect(() => {
+    let activeStream = null;
+    const startCamera = async () => {
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          activeStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } }
+          });
+          if (videoRef.current) {
+            videoRef.current.srcObject = activeStream;
+            setStream(activeStream);
+            setCameraActive(true);
+          }
+        }
+      } catch (err) {
+        console.warn('Camera access unavailable or declined:', err.message);
+        setCameraActive(false);
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      if (activeStream) {
+        activeStream.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, [facingMode]);
+
+  useEffect(() => {
+    let animId;
+    let detector = null;
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        detector = new window.BarcodeDetector({ formats: ['code_128', 'code_39', 'qr_code', 'ean_13', 'upc_a'] });
+      } catch (_) {}
+    }
+
+    const checkFrame = async () => {
+      if (detector && videoRef.current && videoRef.current.readyState === 4) {
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (codes && codes.length > 0) {
+            const rawVal = codes[0].rawValue;
+            handleMatchCode(rawVal);
+          }
+        } catch (_) {}
+      }
+      animId = requestAnimationFrame(checkFrame);
+    };
+
+    if (cameraActive) {
+      animId = requestAnimationFrame(checkFrame);
+    }
+
+    return () => cancelAnimationFrame(animId);
+  }, [cameraActive, allItems]);
+
+  const handleMatchCode = (code) => {
+    const clean = String(code || '').trim().toLowerCase();
+    if (!clean) return;
+
+    let targetSku = clean;
+    if (clean.includes('sku:')) {
+      const match = clean.match(/sku:([^|]+)/i);
+      if (match) targetSku = match[1].toLowerCase().trim();
+    }
+
+    const matched = allItems.find(it =>
+      it.sku.toLowerCase() === targetSku ||
+      it.name.toLowerCase() === targetSku ||
+      it.sku.toLowerCase().includes(targetSku)
+    );
+
+    if (matched) {
+      playScanChime(true);
+      setScannedItem(matched);
+      setAdjustMessage('');
+    } else {
+      playScanChime(false);
+      setAdjustMessage(`No inventory item matches code "${code}"`);
+    }
+  };
+
+  const handleQuickAdjust = async (delta) => {
+    if (!scannedItem) return;
+    const newQty = Math.max(0, scannedItem.quantity + delta);
+    try {
+      await onUpdateStock(scannedItem.id, newQty, scannedItem.isRaw);
+      setScannedItem(prev => ({ ...prev, quantity: newQty }));
+      setAdjustMessage(`✓ Stock adjusted by ${delta > 0 ? `+${delta}` : delta} (New: ${newQty} ${scannedItem.unit})`);
+      playScanChime(true);
+    } catch (err) {
+      setAdjustMessage(`Adjustment failed: ${err.message}`);
+    }
+  };
+
+  return h('div', { className: 'modal-backdrop', onClick: onClose },
+    h('div', {
+      className: 'modal-content scanner-modal',
+      onClick: e => e.stopPropagation()
+    },
+      // Header
+      h('div', { className: 'modal-header' },
+        h('div', null,
+          h('h2', { className: 'modal-title' }, '📷 Mobile & Camera Barcode Scanner'),
+          h('div', { className: 'modal-subtitle' }, 'Point camera at physical labels or use instant SKU keyboard lookup.')
+        ),
+        h('button', { className: 'modal-close-btn', onClick: onClose }, '✕')
+      ),
+
+      // Camera Viewfinder Box
+      h('div', { className: 'scanner-viewport-box' },
+        h('video', {
+          ref: videoRef,
+          className: 'scanner-video-feed',
+          autoPlay: true,
+          playsInline: true,
+          muted: true
+        }),
+
+        // Reticle HUD Overlay
+        h('div', { className: 'scanner-reticle-overlay' },
+          h('div', { className: 'scanner-target-frame' },
+            h('div', { className: 'scanner-target-corner scanner-corner-tl' }),
+            h('div', { className: 'scanner-target-corner scanner-corner-tr' }),
+            h('div', { className: 'scanner-target-corner scanner-corner-bl' }),
+            h('div', { className: 'scanner-target-corner scanner-corner-br' }),
+            h('div', { className: 'scanner-laser-line' })
+          )
+        ),
+
+        // Status Pill
+        h('div', { className: 'scanner-status-pill' },
+          h('span', { style: { width: 8, height: 8, borderRadius: '50%', background: cameraActive ? '#10b981' : '#f59e0b', display: 'inline-block' } }),
+          cameraActive ? `Live Camera (${facingMode === 'environment' ? 'Rear' : 'Front'})` : 'Camera Ready (Click simulation or enter SKU)'
+        ),
+
+        // Flip Camera Button
+        cameraActive && h('button', {
+          type: 'button',
+          style: {
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            background: 'rgba(15, 23, 42, 0.75)',
+            border: 'none',
+            color: '#fff',
+            padding: '4px 8px',
+            borderRadius: 6,
+            fontSize: 11,
+            cursor: 'pointer'
+          },
+          onClick: () => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')
+        }, '🔄 Flip Camera')
+      ),
+
+      // Manual Search & Quick 1-Click Test Simulation
+      h('div', { style: { marginTop: 14 } },
+        h('form', {
+          style: { display: 'flex', gap: 8 },
+          onSubmit: e => { e.preventDefault(); handleMatchCode(manualInput); }
+        },
+          h('input', {
+            className: 'form-input',
+            style: { flex: 1 },
+            placeholder: 'Type or scan SKU code (e.g. FG-AB-204, RM-ST-002)...',
+            value: manualInput,
+            onChange: e => setManualInput(e.target.value)
+          }),
+          h('button', {
+            type: 'submit',
+            className: 'btn btn-primary',
+            style: { padding: '8px 14px' }
+          }, 'Find SKU')
+        ),
+
+        // 1-Click Simulation Buttons for immediate testing
+        h('div', { style: { display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' } },
+          h('span', { style: { fontSize: 11, color: 'var(--text-muted)' } }, '1-Click Scan Test:'),
+          allItems.slice(0, 3).map(it =>
+            h('button', {
+              key: it.sku,
+              type: 'button',
+              className: 'header-action-pill-btn',
+              style: { padding: '3px 8px', fontSize: 11 },
+              onClick: () => handleMatchCode(it.sku)
+            }, `⚡ ${it.sku}`)
+          )
+        )
+      ),
+
+      // Scanned Matched Item Card
+      scannedItem && h('div', { className: 'scanner-matched-card' },
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'start' } },
+          h('div', null,
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              h('h3', { style: { fontSize: 16, fontWeight: 800, margin: 0 } }, scannedItem.name),
+              h('span', { className: 'role-badge role-badge-clerk' }, scannedItem.type)
+            ),
+            h('div', { style: { fontFamily: 'var(--font-mono)', fontSize: 12, color: '#2563eb', fontWeight: 700, marginTop: 2 } }, scannedItem.sku)
+          ),
+          h('div', { style: { textAlign: 'right' } },
+            h('div', { style: { fontSize: 20, fontWeight: 800, color: '#10b981' } }, `${scannedItem.quantity} ${scannedItem.unit}`),
+            h('div', { style: { fontSize: 11, color: 'var(--text-muted)' } }, 'Live in stock')
+          )
+        ),
+
+        // Quick Stock Increments
+        h('div', { style: { marginTop: 14 } },
+          h('div', { style: { fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 } }, 'QUICK STOCK ADJUSTMENT (SHOP FLOOR INTAKE / DISPATCH)'),
+          h('div', { className: 'quick-stock-btn-group' },
+            [
+              { label: '-10', val: -10 },
+              { label: '-1', val: -1 },
+              { label: '+1', val: 1 },
+              { label: '+10', val: 10 }
+            ].map(btn =>
+              h('button', {
+                key: btn.label,
+                type: 'button',
+                className: 'quick-stock-btn',
+                onClick: () => handleQuickAdjust(btn.val)
+              }, btn.label)
+            )
+          )
+        ),
+
+        adjustMessage && h('div', { style: { marginTop: 8, fontSize: 12, color: '#10b981', fontWeight: 600 } }, adjustMessage),
+
+        // Quick Action Buttons
+        h('div', { style: { display: 'flex', gap: 8, marginTop: 14 } },
+          onAddToInvoice && !scannedItem.isRaw && h('button', {
+            className: 'btn btn-primary',
+            style: { flex: 1, padding: '7px 10px', fontSize: 12 },
+            onClick: () => { onClose(); onAddToInvoice(scannedItem); }
+          }, '🧾 Add to Invoice'),
+          onOpenLabelStudio && h('button', {
+            className: 'btn btn-outline',
+            style: { flex: 1, padding: '7px 10px', fontSize: 12 },
+            onClick: () => { onClose(); onOpenLabelStudio(scannedItem); }
+          }, '🏷️ Print Labels'),
+          h('button', {
+            className: 'btn btn-outline',
+            style: { padding: '7px 10px', fontSize: 12 },
+            onClick: () => { setScannedItem(null); setAdjustMessage(''); }
+          }, '🔄 Scan Next')
+        )
+      )
+    )
+  );
+}
+
+// ============================================================
+// INVITE TEAM MEMBER MODAL
+// ============================================================
+function InviteTeamModal({ isOpen, onClose, onInvite }) {
+  if (!isOpen) return null;
+
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('operator');
+  const [department, setDepartment] = useState('Shop Floor & Machining');
+  const [phone, setPhone] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) { setError('Member full name is required'); return; }
+    if (!email.includes('@')) { setError('A valid email address is required'); return; }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      await onInvite({ name, email, role, department, phone });
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to invite team member');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return h('div', { className: 'modal-backdrop', onClick: onClose },
+    h('div', {
+      className: 'modal-content',
+      style: { maxWidth: 520 },
+      onClick: e => e.stopPropagation()
+    },
+      h('div', { className: 'modal-header' },
+        h('div', null,
+          h('h2', { className: 'modal-title' }, '👥 Invite Team Colleague'),
+          h('div', { className: 'modal-subtitle' }, 'Add a coworker to your company workspace with role-based permissions.')
+        ),
+        h('button', { className: 'modal-close-btn', onClick: onClose }, '✕')
+      ),
+
+      h('form', { onSubmit: handleSubmit },
+        h('div', { className: 'modal-body' },
+          error && h('div', { className: 'alert alert-danger', style: { marginBottom: 14 } }, error),
+
+          h('div', { className: 'form-group' },
+            h('label', { className: 'form-label' }, 'Full Name *'),
+            h('input', {
+              className: 'form-input',
+              required: true,
+              placeholder: 'e.g. Ramesh Kumar',
+              value: name,
+              onChange: e => setName(e.target.value)
+            })
+          ),
+
+          h('div', { className: 'form-group' },
+            h('label', { className: 'form-label' }, 'Email Address *'),
+            h('input', {
+              type: 'email',
+              className: 'form-input',
+              required: true,
+              placeholder: 'colleague@rivertonworks.local',
+              value: email,
+              onChange: e => setEmail(e.target.value)
+            })
+          ),
+
+          h('div', { className: 'form-group' },
+            h('label', { className: 'form-label' }, 'Assigned Role & Access Level *'),
+            h('select', {
+              className: 'form-input',
+              value: role,
+              onChange: e => {
+                setRole(e.target.value);
+                if (e.target.value === 'operator') setDepartment('Shop Floor & Machining');
+                else if (e.target.value === 'clerk') setDepartment('Warehouse & Logistics');
+                else if (e.target.value === 'accountant') setDepartment('Accounts & Tax Compliance');
+                else if (e.target.value === 'owner') setDepartment('Plant Executive Office');
+              }
+            },
+              Object.values(ROLE_CONFIGS).map(rc =>
+                h('option', { key: rc.key, value: rc.key }, `${rc.icon} ${rc.name}`)
+              )
+            ),
+            h('div', { style: { fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 } },
+              ROLE_CONFIGS[role]?.summary
+            )
+          ),
+
+          h('div', { className: 'form-row' },
+            h('div', { className: 'form-group', style: { flex: 1 } },
+              h('label', { className: 'form-label' }, 'Department'),
+              h('input', {
+                className: 'form-input',
+                placeholder: 'e.g. Assembly Line A',
+                value: department,
+                onChange: e => setDepartment(e.target.value)
+              })
+            ),
+            h('div', { className: 'form-group', style: { flex: 1 } },
+              h('label', { className: 'form-label' }, 'Phone Number'),
+              h('input', {
+                className: 'form-input',
+                placeholder: '+91 98765 00000',
+                value: phone,
+                onChange: e => setPhone(e.target.value)
+              })
+            )
+          )
+        ),
+
+        h('div', { className: 'modal-footer' },
+          h('button', {
+            type: 'button',
+            className: 'btn btn-outline',
+            onClick: onClose
+          }, 'Cancel'),
+          h('button', {
+            type: 'submit',
+            className: 'btn btn-primary',
+            disabled: submitting
+          }, submitting ? 'Adding...' : 'Send Workspace Invite')
+        )
+      )
+    )
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -2179,6 +3062,21 @@ function App() {
 
   // Theme Switching Animation State
   const [themeSwitching, setThemeSwitching] = useState(false);
+
+  // Simulated Role Switcher state (null means using current user's actual role)
+  const [simulatedRole, setSimulatedRole] = useState(() => {
+    try { return localStorage.getItem('forgeledger_simulated_role') || null; } catch (_) { return null; }
+  });
+
+  // Label Studio & Scanner Modals state
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [labelModalItem, setLabelModalItem] = useState(null);
+  const [showScannerModal, setShowScannerModal] = useState(false);
+
+  // Team & RBAC state
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   // Settings Sub-Tabs: 'profile' (Personal Details), 'company' (Workspace Details), 'customization' (UI & Operational Preferences)
   const [settingsTab, setSettingsTab] = useState('profile');
@@ -2769,6 +3667,95 @@ function App() {
       setLoading(false);
     });
   }
+
+  // Role Computation and Switching
+  const effectiveRole = simulatedRole || (currentUser?.role ? normalizeRole(currentUser.role) : 'owner');
+  const roleConfig = ROLE_CONFIGS[effectiveRole] || ROLE_CONFIGS.owner;
+
+  const handleSwitchSimulatedRole = (r) => {
+    setSimulatedRole(r);
+    try {
+      if (r) localStorage.setItem('forgeledger_simulated_role', r);
+      else localStorage.removeItem('forgeledger_simulated_role');
+    } catch (_) {}
+    const cfg = ROLE_CONFIGS[r || 'owner'] || ROLE_CONFIGS.owner;
+    addToast(`Role view switched to ${cfg.icon} ${cfg.name}`, 'info');
+    if (cfg.allowedTabs && !cfg.allowedTabs.includes(activeTab)) {
+      setActiveTab(cfg.allowedTabs[0]);
+    }
+  };
+
+  const loadTeamMembers = useCallback(async () => {
+    setTeamLoading(true);
+    try {
+      const res = await fetch('/api/team');
+      const data = await res.json();
+      if (data.success && data.data) {
+        setTeamMembers(data.data);
+      }
+    } catch (err) {
+      console.warn('Failed to load team:', err.message);
+    } finally {
+      setTeamLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'settings' && settingsTab === 'team') {
+      loadTeamMembers();
+    }
+  }, [activeTab, settingsTab, loadTeamMembers]);
+
+  const handleUpdateStockFromScanner = async (itemId, newQuantity, isRaw) => {
+    const res = await fetch(`/api/inventory/${itemId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quantity: newQuantity })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Update failed');
+    await loadAllData();
+    return json.data;
+  };
+
+  const handleInviteTeamMember = async (memberData) => {
+    const res = await fetch('/api/team/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(memberData)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Invite failed');
+    addToast(json.message || 'Colleague invited successfully', 'success');
+    await loadTeamMembers();
+  };
+
+  const handleUpdateMemberRole = async (memberId, newRole) => {
+    const res = await fetch(`/api/team/${memberId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: newRole })
+    });
+    const json = await res.json();
+    if (!json.success) {
+      addToast(json.error || 'Failed to update role', 'danger');
+      return;
+    }
+    addToast(json.message || 'Role updated', 'success');
+    await loadTeamMembers();
+  };
+
+  const handleRemoveMember = async (memberId) => {
+    if (!confirm('Are you sure you want to remove this colleague from the workspace roster?')) return;
+    const res = await fetch(`/api/team/${memberId}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (!json.success) {
+      addToast(json.error || 'Failed to remove member', 'danger');
+      return;
+    }
+    addToast('Colleague removed from roster', 'info');
+    await loadTeamMembers();
+  };
 
   // Handle Login / Signup
   function handleAuthSubmit(e) {
@@ -3376,6 +4363,49 @@ function App() {
           )
         ),
         h('div', { className: 'top-header-right' },
+          // Barcode Camera Scanner Header Button
+          h('button', {
+            className: 'header-action-pill-btn',
+            onClick: () => setShowScannerModal(true),
+            title: 'Scan Barcodes & QR Codes with Camera / Mobile'
+          },
+            h('span', null, '📷'),
+            h('span', null, 'Scan Barcode')
+          ),
+
+          // Barcode & QR Label Studio Header Button
+          h('button', {
+            className: 'header-action-pill-btn',
+            onClick: () => { setLabelModalItem(null); setShowLabelModal(true); },
+            title: 'Design & Print Barcode & QR Labels (Thermal & A4)'
+          },
+            h('span', null, '🏷️'),
+            h('span', null, 'Labels')
+          ),
+
+          // Role Switcher / Simulator Pill
+          h('div', {
+            className: 'role-switcher-header',
+            title: 'Simulate Staff Views: Owner, Operator, Clerk, Accountant'
+          },
+            [
+              { key: 'owner', label: 'Owner', icon: '👑' },
+              { key: 'operator', label: 'Operator', icon: '⚙️' },
+              { key: 'clerk', label: 'Clerk', icon: '📦' },
+              { key: 'accountant', label: 'Accountant', icon: '📊' }
+            ].map(r =>
+              h('button', {
+                key: r.key,
+                type: 'button',
+                className: `role-switcher-btn ${effectiveRole === r.key ? 'active' : ''}`,
+                onClick: () => handleSwitchSimulatedRole(r.key)
+              },
+                h('span', null, r.icon),
+                h('span', null, r.label)
+              )
+            )
+          ),
+
           // AI Business Analyst Trigger Button
           h('button', {
             className: 'ai-analyst-header-btn',
@@ -3439,6 +4469,21 @@ function App() {
         )
       ),
 
+      // Active Role Simulation Notice Banner
+      simulatedRole && h('div', { className: 'role-sim-banner' },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          h('span', null, '👁️'),
+          h('span', null,
+            h('strong', null, `Role Simulation Active: ${roleConfig.name} (${roleConfig.icon})`),
+            ' — Financial balances and restricted controls are adapted for this staff level.'
+          )
+        ),
+        h('button', {
+          className: 'reset-btn',
+          onClick: () => handleSwitchSimulatedRole(null)
+        }, '👑 Reset to Owner View')
+      ),
+
       // Content Body
       h('main', { className: 'content-body' },
         h('div', { className: 'tab-pane-animate', key: activeTab },
@@ -3451,46 +4496,50 @@ function App() {
               h('h1', { className: 'page-title' }, 'Business overview'),
               h('p', { className: 'page-desc' }, "Here's what's happening in your workspace.")
             ),
-            // Header Action: Single Primary Button (NO duplicate on this screen)
+            // Header Action: Contextual by role
             h('div', { className: 'header-actions' },
-              h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('sale'); } },
-                h(Icon, { name: 'plus' }), 'New sale'
-              )
+              roleConfig.canViewFinancials ?
+                h('button', { className: 'btn btn-primary', onClick: () => { setFormData({}); setModalType('sale'); } },
+                  h(Icon, { name: 'plus' }), 'New sale'
+                ) :
+                h('button', { className: 'btn btn-primary', onClick: () => setShowScannerModal(true) },
+                  h('span', null, '📷'), ' Scan Barcode / SKU'
+                )
             )
           ),
 
-          // 4 Metric KPI Cards (Fig. 8)
+          // 4 Metric KPI Cards (Adaptive for Role-Based Access)
           h('div', { className: 'metrics-grid' },
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
                 h('span', { className: 'metric-label' }, 'Sales this month'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'sales' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.paidSales || 48600)),
-              h('div', { className: 'metric-footer success' }, '↗ Current period')
+              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(dashboard?.paidSales || 48600) : '₹ ••••••'),
+              h('div', { className: `metric-footer ${roleConfig.canViewFinancials ? 'success' : ''}` }, roleConfig.canViewFinancials ? '↗ Current period' : '🔒 Masked for Shop Floor Role')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
                 h('span', { className: 'metric-label' }, 'Expenses this month'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'expenses' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(dashboard?.totalExpenses || 59950)),
-              h('div', { className: 'metric-footer' }, 'Recorded expenses')
+              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(dashboard?.totalExpenses || 59950) : '₹ ••••••'),
+              h('div', { className: 'metric-footer' }, roleConfig.canViewFinancials ? 'Recorded expenses' : '🔒 Masked for Shop Floor Role')
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Finished goods value'),
+                h('span', { className: 'metric-label' }, roleConfig.canViewFinancials ? 'Finished goods value' : 'Finished goods inventory'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'inventory' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(finishedGoodsVal)),
+              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(finishedGoodsVal) : `${finishedGoodsUnits} units`),
               h('div', { className: 'metric-footer' }, `${finishedGoods.length} product line(s) · ${finishedGoodsUnits} units ready to sell`)
             ),
             h('div', { className: 'metric-card' },
               h('div', { className: 'metric-top' },
-                h('span', { className: 'metric-label' }, 'Raw materials value'),
+                h('span', { className: 'metric-label' }, roleConfig.canViewFinancials ? 'Raw materials value' : 'Raw materials in warehouse'),
                 h('div', { className: 'metric-icon-wrap' }, h(Icon, { name: 'rawMaterials' }))
               ),
-              h('div', { className: 'metric-value' }, formatCurrency(rawMaterialsVal)),
+              h('div', { className: 'metric-value' }, roleConfig.canViewFinancials ? formatCurrency(rawMaterialsVal) : `${rawMaterials.length || rawMaterialsList.length} items`),
               h('div', { className: 'metric-footer' }, `${rawMaterials.length || rawMaterialsList.length} material type(s) in warehouse`)
             )
           ),
@@ -3796,6 +4845,10 @@ function App() {
                 })
               }, h(Icon, { name: 'download', size: 14 }), 'Export CSV'),
               h('button', {
+                className: 'btn btn-outline',
+                onClick: () => { setLabelModalItem(null); setShowLabelModal(true); }
+              }, '🏷️ Label Studio'),
+              h('button', {
                 className: 'btn btn-primary',
                 onClick: () => { setFormData({ category: 'Finished good' }); setModalType('item'); }
               },
@@ -3907,6 +4960,12 @@ function App() {
                             h('button', {
                               className: 'btn btn-outline',
                               style: { padding: '4px 8px', fontSize: 11.5 },
+                              title: 'Print Barcode & QR Label',
+                              onClick: () => { setLabelModalItem(item); setShowLabelModal(true); }
+                            }, '🏷️ Label'),
+                            h('button', {
+                              className: 'btn btn-outline',
+                              style: { padding: '4px 8px', fontSize: 11.5 },
                               onClick: () => { setFormData(item); setModalType('item'); }
                             }, 'Edit'),
                             h('button', {
@@ -3925,7 +4984,9 @@ function App() {
         ),
 
         // ================= TAB: SALES & INVOICES (Fig. 5) =================
-        activeTab === 'sales' && h('div', null,
+        activeTab === 'sales' && (!roleConfig.canViewFinancials ?
+          h(AccessRestrictedCard, { role: effectiveRole, allowedRoles: ['Owner', 'Accountant'], onReset: () => handleSwitchSimulatedRole(null) }) :
+          h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
               h('div', { className: 'page-subtitle' }, 'REVENUE & INVOICES'),
@@ -4092,10 +5153,12 @@ function App() {
               )
             )
           )
-        ),
+        )),
 
         // ================= TAB: EXPENSES (Fig. 6) =================
-        activeTab === 'expenses' && h('div', null,
+        activeTab === 'expenses' && (!roleConfig.canViewFinancials ?
+          h(AccessRestrictedCard, { role: effectiveRole, allowedRoles: ['Owner', 'Accountant'], onReset: () => handleSwitchSimulatedRole(null) }) :
+          h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
               h('div', { className: 'page-subtitle' }, 'COSTS & OUTGOINGS'),
@@ -4239,7 +5302,7 @@ function App() {
               )
             )
           )
-        ),
+        )),
 
         // ================= TAB: RAW MATERIALS (Fig. 7) =================
         activeTab === 'rawMaterials' && h('div', null,
@@ -4388,11 +5451,19 @@ function App() {
                         h('td', { style: { fontWeight: 700, color: '#059669' } }, `${mat.quantity} ${mat.unit}`),
                         h('td', { style: { fontFamily: 'var(--font-mono)' } }, formatCurrency(mat.unit_cost)),
                         h('td', { style: { textAlign: 'right' } },
-                          h('button', {
-                            className: 'btn btn-danger-outline',
-                            style: { padding: '4px 8px' },
-                            onClick: () => handleDelete('raw-materials', mat.id)
-                          }, h(Icon, { name: 'trash', size: 13 }))
+                          h('div', { style: { display: 'inline-flex', gap: 6 } },
+                            h('button', {
+                              className: 'btn btn-outline',
+                              style: { padding: '4px 8px', fontSize: 11.5 },
+                              title: 'Print Raw Material Barcode & QR Label',
+                              onClick: () => { setLabelModalItem(mat); setShowLabelModal(true); }
+                            }, '🏷️ Label'),
+                            h('button', {
+                              className: 'btn btn-danger-outline',
+                              style: { padding: '4px 8px' },
+                              onClick: () => handleDelete('raw-materials', mat.id)
+                            }, h(Icon, { name: 'trash', size: 13 }))
+                          )
                         )
                       )
                     )
@@ -4572,7 +5643,9 @@ function App() {
         ),
 
         // ================= TAB: PAYROLL =================
-        activeTab === 'payroll' && h('div', null,
+        activeTab === 'payroll' && (!roleConfig.canDisbursePayroll ?
+          h(AccessRestrictedCard, { role: effectiveRole, allowedRoles: ['Owner', 'Accountant'], onReset: () => handleSwitchSimulatedRole(null) }) :
+          h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
               h('div', { className: 'page-subtitle' }, 'HUMAN RESOURCES & COMPENSATION'),
@@ -4724,10 +5797,12 @@ function App() {
               )
             )
           )
-        ),
+        )),
 
         // ================= TAB: REPORTS =================
-        activeTab === 'reports' && h('div', null,
+        activeTab === 'reports' && (!roleConfig.canViewFinancials ?
+          h(AccessRestrictedCard, { role: effectiveRole, allowedRoles: ['Owner', 'Accountant'], onReset: () => handleSwitchSimulatedRole(null) }) :
+          h('div', null,
           h('div', { className: 'page-header' },
             h('div', null,
               h('div', { className: 'page-subtitle' }, 'FINANCIAL & BUSINESS ANALYTICS'),
@@ -4834,7 +5909,7 @@ function App() {
               )
             )
           )
-        ),
+        )),
 
         // ================= TAB: ACCOUNT & SETTINGS =================
         activeTab === 'settings' && h('div', null,
@@ -4850,6 +5925,7 @@ function App() {
           h('div', { className: 'settings-tabs-nav' },
             [
               { id: 'profile', icon: '👤', label: 'Profile & Identity' },
+              { id: 'team', icon: '👥', label: 'Team & Staff Roles' },
               { id: 'security', icon: '🔒', label: 'Security & Access' },
               { id: 'company', icon: '🏢', label: 'Company Workspace' },
               { id: 'customization', icon: '🎨', label: 'Workspace Customization' },
@@ -5647,6 +6723,148 @@ function App() {
               h('div', { style: { fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6 } },
                 'You maintain total ownership of all business transactions, stock valuation, and operator data. Backups conform to standard JSON schema and can be archived for audit compliance or imported into external ERP systems with zero platform lock-in.'
               )
+            )
+          ),
+
+          // ----- SUB-TAB 6: TEAM COLLABORATION & RBAC ROLES -----
+          settingsTab === 'team' && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 980 } },
+            // Interactive Role Simulator Card
+            h('div', { className: 'card', style: { padding: 22 } },
+              h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
+                h('div', null,
+                  h('h3', { className: 'card-title', style: { margin: 0 } }, '🎭 Interactive Role Simulator'),
+                  h('p', { className: 'card-subtitle', style: { margin: 0, marginTop: 4 } },
+                    'Experience ForgeLedger through the perspective of different plant personnel. Switch views instantly to test access restrictions.'
+                  )
+                ),
+                simulatedRole && h('button', {
+                  className: 'btn btn-outline',
+                  style: { fontSize: 11.5, padding: '4px 10px' },
+                  onClick: () => handleSwitchSimulatedRole(null)
+                }, '👑 Reset to Owner View')
+              ),
+
+              h('div', { className: 'team-roles-sim-grid' },
+                Object.values(ROLE_CONFIGS).map(rc => {
+                  const isActive = effectiveRole === rc.key;
+                  return h('div', {
+                    key: rc.key,
+                    className: `role-card-item ${isActive ? 'active-sim' : ''}`
+                  },
+                    h('div', null,
+                      h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 } },
+                        h('span', { style: { fontSize: 24 } }, rc.icon),
+                        h('span', { className: `role-badge ${rc.badgeClass}` }, rc.key)
+                      ),
+                      h('h4', { style: { fontSize: 14, fontWeight: 700, margin: '4px 0', color: 'var(--text-main)' } }, rc.name),
+                      h('p', { style: { fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.45, margin: 0, minHeight: 48 } }, rc.summary)
+                    ),
+                    h('div', { style: { marginTop: 14 } },
+                      h('button', {
+                        type: 'button',
+                        className: `btn ${isActive ? 'btn-primary' : 'btn-outline'}`,
+                        style: { width: '100%', padding: '6px 10px', fontSize: 11.5, fontWeight: 700 },
+                        onClick: () => handleSwitchSimulatedRole(rc.key)
+                      }, isActive ? '✓ Active View' : `Simulate ${rc.name.split(' ')[0]}`)
+                    )
+                  );
+                })
+              )
+            ),
+
+            // Team Roster Table
+            h('div', { className: 'card', style: { padding: 22 } },
+              h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 } },
+                h('div', null,
+                  h('h3', { className: 'card-title', style: { margin: 0 } }, '👥 Workshop Team Roster'),
+                  h('p', { className: 'card-subtitle', style: { margin: 0, marginTop: 4 } },
+                    'Manage authorized coworkers, factory operators, and assign role-based permissions.'
+                  )
+                ),
+                h('button', {
+                  className: 'btn btn-primary',
+                  onClick: () => setShowInviteModal(true)
+                }, '+ Invite Team Member')
+              ),
+
+              teamLoading ?
+                h('div', { style: { padding: 24, textAlign: 'center', color: 'var(--text-muted)' } }, 'Loading workshop roster...') :
+                h('div', { className: 'table-responsive' },
+                  h('table', { className: 'custom-table' },
+                    h('thead', null,
+                      h('tr', null,
+                        h('th', null, 'TEAM MEMBER'),
+                        h('th', null, 'DEPARTMENT'),
+                        h('th', null, 'ASSIGNED ROLE'),
+                        h('th', null, 'STATUS'),
+                        h('th', { style: { textAlign: 'right' } }, 'ACTIONS')
+                      )
+                    ),
+                    h('tbody', null,
+                      teamMembers.map(m => {
+                        const mRoleKey = normalizeRole(m.role);
+                        const mRoleCfg = ROLE_CONFIGS[mRoleKey] || ROLE_CONFIGS.operator;
+                        const initial = (m.name || 'U').charAt(0).toUpperCase();
+
+                        return h('tr', { key: m.id },
+                          h('td', null,
+                            h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                              h('div', {
+                                style: {
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: '50%',
+                                  background: m.picture?.startsWith('gradient:') ?
+                                    'linear-gradient(135deg, #3b82f6, #8b5cf6)' :
+                                    'linear-gradient(135deg, #2563eb, #38bdf8)',
+                                  color: '#fff',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: 800,
+                                  fontSize: 13
+                                }
+                              }, initial),
+                              h('div', null,
+                                h('div', { style: { fontWeight: 700 } },
+                                  m.name,
+                                  m.is_owner && h('span', { style: { fontSize: 10, color: '#f59e0b', marginLeft: 6, fontWeight: 700 } }, '👑 PRIMARY OWNER')
+                                ),
+                                h('div', { style: { fontSize: 11, color: 'var(--text-muted)' } }, m.email)
+                              )
+                            )
+                          ),
+                          h('td', { style: { color: 'var(--text-muted)' } }, m.department || 'Operations'),
+                          h('td', null,
+                            m.is_owner ?
+                              h('span', { className: `role-badge ${mRoleCfg.badgeClass}` }, `${mRoleCfg.icon} ${mRoleCfg.name}`) :
+                              h('select', {
+                                className: 'form-input',
+                                style: { padding: '3px 8px', fontSize: 11.5, height: 'auto', width: 'auto' },
+                                value: mRoleKey,
+                                onChange: e => handleUpdateMemberRole(m.id, e.target.value)
+                              },
+                                Object.values(ROLE_CONFIGS).map(rc =>
+                                  h('option', { key: rc.key, value: rc.key }, `${rc.icon} ${rc.name}`)
+                                )
+                              )
+                          ),
+                          h('td', null,
+                            h('span', { className: 'badge badge-success' }, m.status || 'Active')
+                          ),
+                          h('td', { style: { textAlign: 'right' } },
+                            !m.is_owner && h('button', {
+                              className: 'btn btn-danger-outline',
+                              style: { padding: '4px 8px' },
+                              onClick: () => handleRemoveMember(m.id),
+                              title: 'Remove colleague from workspace'
+                            }, h(Icon, { name: 'trash', size: 13 }))
+                          )
+                        );
+                      })
+                    )
+                  )
+                )
             )
           )
         )
@@ -6777,7 +7995,10 @@ function App() {
         if (searchVal) setSearchQuery(searchVal);
       },
       onAction: (act) => {
-        if (act === 'aiAnalyst') { setAiAnalystInitialQuery(''); setShowAiAnalyst(true); }
+        if (act === 'barcodeScanner') { setShowScannerModal(true); }
+        else if (act === 'labelStudio') { setLabelModalItem(null); setShowLabelModal(true); }
+        else if (act === 'team') { setActiveTab('settings'); setSettingsTab('team'); }
+        else if (act === 'aiAnalyst') { setAiAnalystInitialQuery(''); setShowAiAnalyst(true); }
         else if (act === 'ocr') { setShowOcrModal(true); }
         else if (act === 'forecast') { setActiveTab('rawMaterials'); setShowForecastView(true); }
         else if (act === 'sale') { setFormData({}); setModalType('sale'); }
@@ -6822,6 +8043,52 @@ function App() {
       onClose: () => setShowAiAnalyst(false),
       initialQuery: aiAnalystInitialQuery,
       currency: '₹'
+    }),
+
+    // Barcode & QR Code Label Studio Modal
+    h(BarcodeLabelModal, {
+      isOpen: showLabelModal,
+      onClose: () => setShowLabelModal(false),
+      initialItem: labelModalItem,
+      finishedGoods,
+      rawMaterials,
+      company: companySettings || (userCompanies && userCompanies[0]) || { name: 'Riverton Works' },
+      onOpenScanner: () => setShowScannerModal(true)
+    }),
+
+    // Mobile & Camera Barcode Scanner Modal
+    h(BarcodeScannerModal, {
+      isOpen: showScannerModal,
+      onClose: () => setShowScannerModal(false),
+      finishedGoods,
+      rawMaterials,
+      onUpdateStock: handleUpdateStockFromScanner,
+      onAddToInvoice: (item) => {
+        setFormData({
+          items: [{
+            product_id: item.id,
+            product_name: item.name,
+            quantity: 1,
+            unit_price: item.price,
+            line_total: item.price
+          }],
+          tax: item.price * 0.18,
+          total: item.price * 1.18
+        });
+        setActiveTab('sales');
+        setModalType('sale');
+      },
+      onOpenLabelStudio: (item) => {
+        setLabelModalItem(item);
+        setShowLabelModal(true);
+      }
+    }),
+
+    // Invite Team Colleague Modal
+    h(InviteTeamModal, {
+      isOpen: showInviteModal,
+      onClose: () => setShowInviteModal(false),
+      onInvite: handleInviteTeamMember
     })
   );
 }
