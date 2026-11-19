@@ -492,6 +492,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .breadcrumb span.current {
@@ -502,7 +503,7 @@ body {
 .top-header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .theme-toggle-btn {

@@ -4408,7 +4408,7 @@ function App() {
               title: 'Simulate Staff Views: Owner, Operator, Clerk, Accountant'
             },
               h('span', { style: { fontSize: 13 } }, roleConfig.icon),
-              h('span', { className: 'role-trigger-label' }, roleConfig.name.split(' ')[0]),
+              h('span', { className: 'role-trigger-label' }, effectiveRole === 'owner' ? 'Owner' : effectiveRole === 'operator' ? 'Operator' : effectiveRole === 'clerk' ? 'Clerk' : 'Accountant'),
               simulatedRole && h('span', { className: 'role-sim-tag' }, 'SIM'),
               h('span', { style: { fontSize: 9, opacity: 0.7, marginLeft: 2 } }, '▼')
             ),
