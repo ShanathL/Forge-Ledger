@@ -1,7 +1,7 @@
 // public/app.js - ForgeLedger Complete Refined Application
 // Reference: Lanka Shanath, "Integrated Manufacturing Workspace for Small Manufacturers"
 
-const { useState, useEffect, useMemo, useCallback, createElement: h } = React;
+const { useState, useEffect, useMemo, useCallback, useRef, createElement: h } = React;
 
 function formatCurrency(amount, currency = null) {
   const num = Number(amount) || 0;
