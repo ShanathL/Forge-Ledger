@@ -22,8 +22,10 @@ const initialData = {
       id: 1,
       name: 'Demo User',
       email: 'demo@forgeledger.local',
-      password_hash: bcrypt.hashSync('password123', 10),
+      password_hash: null,
       picture: '',
+      role: 'owner',
+      is_demo: 1,
       company_id: 1,
       created_at: '2026-09-01T10:00:00.000Z',
       updated_at: '2026-09-01T10:00:00.000Z'
@@ -49,150 +51,52 @@ const initialData = {
     }
   ],
   inventory: [
-    {
-      id: 1,
-      user_id: 1,
-      item_name: 'Steel sheets, 2mm',
-      sku: 'RM-ST-002',
-      category: 'Raw material',
-      quantity: 12.00,
-      unit: 'sheets',
-      unit_cost: 1840.00,
-      reorder_level: 30.00,
-      created_at: '2026-09-01T10:00:00.000Z',
-      updated_at: '2026-09-01T10:00:00.000Z'
-    },
-    {
-      id: 2,
-      user_id: 1,
-      item_name: 'Aluminium rods',
-      sku: 'RM-AL-011',
-      category: 'Raw material',
-      quantity: 86.00,
-      unit: 'kg',
-      unit_cost: 420.00,
-      reorder_level: 30.00,
-      created_at: '2026-09-01T10:00:00.000Z',
-      updated_at: '2026-09-01T10:00:00.000Z'
-    },
-    {
-      id: 3,
-      user_id: 1,
-      item_name: 'Assembly bracket',
-      sku: 'FG-AB-204',
-      category: 'Finished good',
-      quantity: 240.00,
-      unit: 'units',
-      unit_cost: 285.00,
-      reorder_level: 50.00,
-      created_at: '2026-09-01T10:00:00.000Z',
-      updated_at: '2026-09-01T10:00:00.000Z'
-    }
+    { id: 1, user_id: 1, company_id: 1, item_name: 'Steel sheets, 2mm', sku: 'RM-ST-002', category: 'Raw material', quantity: 12.00, unit: 'sheets', unit_cost: 1840.00, reorder_level: 35.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 2, user_id: 1, company_id: 1, item_name: 'Aluminium rods, 6061-T6', sku: 'RM-AL-011', category: 'Raw material', quantity: 86.00, unit: 'kg', unit_cost: 420.00, reorder_level: 30.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 3, user_id: 1, company_id: 1, item_name: 'Forged Carbon Steel Billets 100mm', sku: 'RM-CS-104', category: 'Raw material', quantity: 18.00, unit: 'billets', unit_cost: 2650.00, reorder_level: 25.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 4, user_id: 1, company_id: 1, item_name: 'Brass Hex Stock 32mm', sku: 'RM-BR-032', category: 'Raw material', quantity: 140.00, unit: 'kg', unit_cost: 580.00, reorder_level: 40.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 5, user_id: 1, company_id: 1, item_name: 'Hydraulic Nitrile O-Ring Kits', sku: 'RM-OR-500', category: 'Raw material', quantity: 95.00, unit: 'kits', unit_cost: 85.00, reorder_level: 30.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 6, user_id: 1, company_id: 1, item_name: 'CNC Cutting Fluid & Lubricant', sku: 'RM-CL-020', category: 'Raw material', quantity: 6.00, unit: 'drums', unit_cost: 3200.00, reorder_level: 10.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 7, user_id: 1, company_id: 1, item_name: 'Assembly bracket', sku: 'FG-AB-204', category: 'Finished good', quantity: 160.00, unit: 'units', unit_cost: 285.00, reorder_level: 40.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 8, user_id: 1, company_id: 1, item_name: 'Heavy Industrial Flange 4-Inch', sku: 'FG-FL-401', category: 'Finished good', quantity: 85.00, unit: 'units', unit_cost: 1240.00, reorder_level: 25.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 9, user_id: 1, company_id: 1, item_name: 'Precision Spur Gearbox 1:10', sku: 'FG-GB-810', category: 'Finished good', quantity: 28.00, unit: 'units', unit_cost: 3400.00, reorder_level: 15.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 10, user_id: 1, company_id: 1, item_name: 'Hydraulic Control Valve 500PSI', sku: 'FG-HV-502', category: 'Finished good', quantity: 42.00, unit: 'units', unit_cost: 1850.00, reorder_level: 20.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 11, user_id: 1, company_id: 1, item_name: 'Turned Brass Bushing Set', sku: 'FG-BB-108', category: 'Finished good', quantity: 320.00, unit: 'units', unit_cost: 110.00, reorder_level: 80.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 12, user_id: 1, company_id: 1, item_name: 'Stainless Shaft Coupler 25mm', sku: 'FG-SC-325', category: 'Finished good', quantity: 110.00, unit: 'units', unit_cost: 460.00, reorder_level: 30.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' }
   ],
   sales: [
-    {
-      id: 1,
-      user_id: 1,
-      invoice_no: 'INV-1048',
-      customer: 'Northstar Retail',
-      issued_date: '2026-09-08',
-      due_date: '2026-09-15',
-      amount: 48600.00,
-      status: 'Paid',
-      created_at: '2026-09-08T10:00:00.000Z',
-      updated_at: '2026-09-08T10:00:00.000Z'
-    },
-    {
-      id: 2,
-      user_id: 1,
-      invoice_no: 'INV-1047',
-      customer: 'Veda Industrial Supply',
-      issued_date: '2026-09-06',
-      due_date: '2026-09-15',
-      amount: 32400.00,
-      status: 'Pending',
-      created_at: '2026-09-06T10:00:00.000Z',
-      updated_at: '2026-09-06T10:00:00.000Z'
-    },
-    {
-      id: 3,
-      user_id: 1,
-      invoice_no: 'INV-1045',
-      customer: 'Omkar Fabrications',
-      issued_date: '2026-09-01',
-      due_date: '2026-09-05',
-      amount: 48200.00,
-      status: 'Overdue',
-      created_at: '2026-09-01T10:00:00.000Z',
-      updated_at: '2026-09-01T10:00:00.000Z'
-    }
+    { id: 1, user_id: 1, company_id: 1, invoice_no: 'INV-1048', customer: 'Northstar Retail Solutions', issued_date: '2026-09-08', due_date: '2026-09-15', amount: 48600.00, status: 'Paid', items: JSON.stringify([{ itemName: 'Assembly bracket', quantity: 72, unitPrice: 450, total: 32400 }, { itemName: 'Stainless Shaft Coupler 25mm', quantity: 22, unitPrice: 720, total: 16200 }]), created_at: '2026-09-08T10:00:00.000Z', updated_at: '2026-09-08T10:00:00.000Z' },
+    { id: 2, user_id: 1, company_id: 1, invoice_no: 'INV-1047', customer: 'Veda Industrial Supply', issued_date: '2026-09-06', due_date: '2026-09-15', amount: 32400.00, status: 'Paid', items: JSON.stringify([{ itemName: 'Turned Brass Bushing Set', quantity: 120, unitPrice: 165, total: 19800 }, { itemName: 'Assembly bracket', quantity: 28, unitPrice: 450, total: 12600 }]), created_at: '2026-09-06T10:00:00.000Z', updated_at: '2026-09-06T10:00:00.000Z' },
+    { id: 3, user_id: 1, company_id: 1, invoice_no: 'INV-1049', customer: 'Tata Motors Heavy Engineering', issued_date: '2026-09-11', due_date: '2026-09-25', amount: 86000.00, status: 'Paid', items: JSON.stringify([{ itemName: 'Heavy Industrial Flange 4-Inch', quantity: 40, unitPrice: 2150, total: 86000 }]), created_at: '2026-09-11T10:00:00.000Z', updated_at: '2026-09-11T10:00:00.000Z' },
+    { id: 4, user_id: 1, company_id: 1, invoice_no: 'INV-1050', customer: 'Larsen & Toubro Machinery Division', issued_date: '2026-09-14', due_date: '2026-09-28', amount: 116000.00, status: 'Paid', items: JSON.stringify([{ itemName: 'Precision Spur Gearbox 1:10', quantity: 20, unitPrice: 5800, total: 116000 }]), created_at: '2026-09-14T10:00:00.000Z', updated_at: '2026-09-14T10:00:00.000Z' },
+    { id: 5, user_id: 1, company_id: 1, invoice_no: 'INV-1051', customer: 'BHEL Power Equipment Plant', issued_date: '2026-09-18', due_date: '2026-10-05', amount: 64000.00, status: 'Pending', items: JSON.stringify([{ itemName: 'Hydraulic Control Valve 500PSI', quantity: 20, unitPrice: 3200, total: 64000 }]), created_at: '2026-09-18T10:00:00.000Z', updated_at: '2026-09-18T10:00:00.000Z' },
+    { id: 6, user_id: 1, company_id: 1, invoice_no: 'INV-1052', customer: 'Mahindra Precision Dynamics', issued_date: '2026-09-22', due_date: '2026-10-10', amount: 41700.00, status: 'Pending', items: JSON.stringify([{ itemName: 'Stainless Shaft Coupler 25mm', quantity: 35, unitPrice: 720, total: 25200 }, { itemName: 'Turned Brass Bushing Set', quantity: 100, unitPrice: 165, total: 16500 }]), created_at: '2026-09-22T10:00:00.000Z', updated_at: '2026-09-22T10:00:00.000Z' },
+    { id: 7, user_id: 1, company_id: 1, invoice_no: 'INV-1045', customer: 'Omkar Fabrications', issued_date: '2026-09-01', due_date: '2026-09-05', amount: 48200.00, status: 'Overdue', items: JSON.stringify([{ itemName: 'Heavy Industrial Flange 4-Inch', quantity: 16, unitPrice: 2150, total: 34400 }, { itemName: 'Assembly bracket', quantity: 30, unitPrice: 450, total: 13800 }]), created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' }
   ],
   expenses: [
-    {
-      id: 1,
-      user_id: 1,
-      description: 'Factory electricity bill',
-      category: 'Utilities',
-      expense_date: '2026-09-07',
-      payment_method: 'Bank transfer',
-      amount: 28450.00,
-      created_at: '2026-09-07T10:00:00.000Z',
-      updated_at: '2026-09-07T10:00:00.000Z'
-    },
-    {
-      id: 2,
-      user_id: 1,
-      description: 'Packaging supplies',
-      category: 'Materials',
-      expense_date: '2026-09-05',
-      payment_method: 'UPI',
-      amount: 12900.00,
-      created_at: '2026-09-05T10:00:00.000Z',
-      updated_at: '2026-09-05T10:00:00.000Z'
-    },
-    {
-      id: 3,
-      user_id: 1,
-      description: 'Equipment servicing',
-      category: 'Maintenance',
-      expense_date: '2026-09-03',
-      payment_method: 'Bank transfer',
-      amount: 18600.00,
-      created_at: '2026-09-03T10:00:00.000Z',
-      updated_at: '2026-09-03T10:00:00.000Z'
-    }
+    { id: 1, user_id: 1, company_id: 1, description: 'Factory 3-Phase Electricity Bill (TNEB Power Grid)', category: 'Utilities', expense_date: '2026-09-07', payment_method: 'Bank transfer', amount: 34800.00, created_at: '2026-09-07T10:00:00.000Z', updated_at: '2026-09-07T10:00:00.000Z' },
+    { id: 2, user_id: 1, company_id: 1, description: 'Diesel Generator Fuel & Compressed Air Backups', category: 'Utilities', expense_date: '2026-09-15', payment_method: 'UPI', amount: 14200.00, created_at: '2026-09-15T10:00:00.000Z', updated_at: '2026-09-15T10:00:00.000Z' },
+    { id: 3, user_id: 1, company_id: 1, description: 'Bulk Steel Sheet Procurement (Tata Steel Distribution)', category: 'Materials', expense_date: '2026-09-04', payment_method: 'Bank transfer', amount: 55200.00, created_at: '2026-09-04T10:00:00.000Z', updated_at: '2026-09-04T10:00:00.000Z' },
+    { id: 4, user_id: 1, company_id: 1, description: 'Aluminium Extrusions & Brass Rod Restock', category: 'Materials', expense_date: '2026-09-12', payment_method: 'Bank transfer', amount: 32600.00, created_at: '2026-09-12T10:00:00.000Z', updated_at: '2026-09-12T10:00:00.000Z' },
+    { id: 5, user_id: 1, company_id: 1, description: 'Packaging Cartons & Strapping Band Rolls', category: 'Materials', expense_date: '2026-09-05', payment_method: 'UPI', amount: 12900.00, created_at: '2026-09-05T10:00:00.000Z', updated_at: '2026-09-05T10:00:00.000Z' },
+    { id: 6, user_id: 1, company_id: 1, description: 'CNC Milling Spindle Servicing & Carbide Inserts', category: 'Maintenance', expense_date: '2026-09-03', payment_method: 'Bank transfer', amount: 18600.00, created_at: '2026-09-03T10:00:00.000Z', updated_at: '2026-09-03T10:00:00.000Z' },
+    { id: 7, user_id: 1, company_id: 1, description: 'Hydraulic Press Calibration & Filter Replacements', category: 'Maintenance', expense_date: '2026-09-19', payment_method: 'UPI', amount: 8400.00, created_at: '2026-09-19T10:00:00.000Z', updated_at: '2026-09-19T10:00:00.000Z' },
+    { id: 8, user_id: 1, company_id: 1, description: 'Industrial Estate Shed Lease - Guindy Plot 45', category: 'Rent', expense_date: '2026-09-01', payment_method: 'Bank transfer', amount: 45000.00, created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 9, user_id: 1, company_id: 1, description: 'Freight & Logistics Dispatch (Blue Dart Freight)', category: 'Logistics', expense_date: '2026-09-16', payment_method: 'UPI', amount: 9800.00, created_at: '2026-09-16T10:00:00.000Z', updated_at: '2026-09-16T10:00:00.000Z' }
   ],
   employees: [
-    {
-      id: 1,
-      user_id: 1,
-      name: 'Demo Employee',
-      role: 'Production Operator',
-      monthly_salary: 28000.00,
-      status: 'Active',
-      created_at: '2026-09-01T10:00:00.000Z',
-      updated_at: '2026-09-01T10:00:00.000Z'
-    }
+    { id: 1, user_id: 1, company_id: 1, name: 'Demo Employee', role: 'Shop Floor Operator', monthly_salary: 28000.00, status: 'Active', created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 2, user_id: 1, company_id: 1, name: 'Kavita Sundaram', role: 'Warehouse Clerk', monthly_salary: 24500.00, status: 'Active', created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 3, user_id: 1, company_id: 1, name: 'Suresh Nair', role: 'Accountant & Tax Lead', monthly_salary: 36000.00, status: 'Active', created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' },
+    { id: 4, user_id: 1, company_id: 1, name: 'Arjun Patel', role: 'Senior CNC Machinist', monthly_salary: 32000.00, status: 'Active', created_at: '2026-09-01T10:00:00.000Z', updated_at: '2026-09-01T10:00:00.000Z' }
   ],
   production_runs: [
-    {
-      id: 1,
-      user_id: 1,
-      run_date: '2026-09-05',
-      product: 'Assembly bracket',
-      quantity: 100.00,
-      status: 'Completed',
-      created_at: '2026-09-05T10:00:00.000Z'
-    },
-    {
-      id: 2,
-      user_id: 1,
-      run_date: '2026-09-10',
-      product: 'Assembly bracket',
-      quantity: 150.00,
-      status: 'In progress',
-      created_at: '2026-09-10T10:00:00.000Z'
-    }
+    { id: 1, user_id: 1, company_id: 1, run_date: '2026-09-05', product: 'Assembly bracket', quantity: 100.00, status: 'Completed', created_at: '2026-09-05T10:00:00.000Z' },
+    { id: 2, user_id: 1, company_id: 1, run_date: '2026-09-10', product: 'Assembly bracket', quantity: 150.00, status: 'In progress', created_at: '2026-09-10T10:00:00.000Z' },
+    { id: 3, user_id: 1, company_id: 1, run_date: '2026-09-08', product: 'Heavy Industrial Flange 4-Inch', quantity: 50.00, status: 'Completed', created_at: '2026-09-08T10:00:00.000Z' },
+    { id: 4, user_id: 1, company_id: 1, run_date: '2026-09-16', product: 'Hydraulic Control Valve 500PSI', quantity: 35.00, status: 'In progress', created_at: '2026-09-16T10:00:00.000Z' },
+    { id: 5, user_id: 1, company_id: 1, run_date: '2026-09-24', product: 'Precision Spur Gearbox 1:10', quantity: 20.00, status: 'Planned', created_at: '2026-09-24T10:00:00.000Z' },
+    { id: 6, user_id: 1, company_id: 1, run_date: '2026-09-12', product: 'Turned Brass Bushing Set', quantity: 250.00, status: 'Completed', created_at: '2026-09-12T10:00:00.000Z' }
   ],
   sequences: {
     user: 2,

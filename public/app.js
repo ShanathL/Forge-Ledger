@@ -3895,12 +3895,28 @@ function App() {
     });
   }
 
-  // Role Computation and Switching
+  // Clear simulated role if accessing from a regular production account
+  useEffect(() => {
+    if (!isDemoAccount && simulatedRole) {
+      setSimulatedRole(null);
+      try { localStorage.removeItem('forgeledger_simulated_role'); } catch (_) {}
+    }
+  }, [isDemoAccount, simulatedRole]);
+
+  // Account Mode & Role Scoping
+  // Role simulation is strictly available in the Demo Account sandbox
+  const isDemoAccount = Boolean(
+    currentUser?.is_demo ||
+    currentUser?.id === 1 ||
+    (currentUser?.email && currentUser.email.toLowerCase().includes('demo'))
+  );
   const isActualAdmin = !currentUser ||
     ['owner', 'admin', 'plant manager', 'manager'].some(r => String(currentUser.role || '').toLowerCase().includes(r));
-  const canChangeRole = !adminOnlyRoles || isActualAdmin;
 
-  const effectiveRole = (canChangeRole ? simulatedRole : null) || (currentUser?.role ? normalizeRole(currentUser.role) : 'owner');
+  // In regular accounts, role simulation is completely disabled: users only see what their assigned role allows
+  const canSimulateRoles = isDemoAccount;
+  const canChangeRole = isDemoAccount && (!adminOnlyRoles || isActualAdmin);
+  const effectiveRole = (canSimulateRoles ? simulatedRole : null) || (currentUser?.role ? normalizeRole(currentUser.role) : 'owner');
   const roleConfig = ROLE_CONFIGS[effectiveRole] || ROLE_CONFIGS.owner;
 
   const handleToggleAdminOnlyRoles = (val) => {
@@ -3912,8 +3928,8 @@ function App() {
   };
 
   const handleSwitchSimulatedRole = (r) => {
-    if (!canChangeRole) {
-      addToast('Role changes are locked by your Workspace Admin.', 'warning');
+    if (!isDemoAccount) {
+      addToast('Role simulation is only available in the Demo Account sandbox. In production organizations, access is governed strictly by assigned staff roles.', 'warning');
       return;
     }
     const target = (r === 'owner' || !r) ? null : r;
@@ -4638,14 +4654,15 @@ function App() {
             )
           ),
 
-          // Role Switcher / Simulator Dropdown Pill or Locked Staff Badge
-          canChangeRole ?
+          // Role Selector / Simulator Pill or Locked Staff Badge
+          isDemoAccount ?
+            // DEMO ACCOUNT: Full Role Switcher & Perspective Simulator
             h('div', { className: 'role-selector-dropdown-wrap' },
               h('button', {
                 type: 'button',
                 className: `role-selector-trigger ${simulatedRole ? 'is-simulated' : ''}`,
                 onClick: (e) => { e.stopPropagation(); setShowRoleDropdown(prev => !prev); },
-                title: 'Admin Governance: Simulate Views & Assign Member Roles'
+                title: 'Demo Sandbox: Simulate Views & Perspectives'
               },
                 h('span', { style: { fontSize: 13 } }, roleConfig.icon),
                 h('span', { className: 'role-trigger-label' }, effectiveRole === 'owner' ? 'Owner' : effectiveRole === 'operator' ? 'Operator' : effectiveRole === 'clerk' ? 'Clerk' : 'Accountant'),
@@ -4661,16 +4678,16 @@ function App() {
                   h('div', { className: 'role-dropdown-avatar' }, (currentUser?.name || 'D').charAt(0).toUpperCase()),
                   h('div', { style: { flex: 1, minWidth: 0 } },
                     h('div', { className: 'role-dropdown-user-name' }, currentUser?.name || 'Demo User'),
-                    h('div', { className: 'role-dropdown-user-email' }, currentUser?.email || 'demo@rivertonworks.local')
+                    h('div', { className: 'role-dropdown-user-email' }, currentUser?.email || 'demo@forgeledger.local')
                   ),
-                  h('span', { className: `role-badge ${ROLE_CONFIGS[normalizeRole(currentUser?.role)].badgeClass}`, style: { fontSize: 10, fontWeight: 700 } },
-                    `${ROLE_CONFIGS[normalizeRole(currentUser?.role)].icon} ${ROLE_CONFIGS[normalizeRole(currentUser?.role)].name.split(' ')[0]}`
+                  h('span', { className: 'role-badge role-badge-owner', style: { fontSize: 9.5, fontWeight: 700 } },
+                    '🧪 Demo Sandbox'
                   )
                 ),
 
-                // Perspective Switcher Section
+                // Perspective Switcher Section (Demo Only)
                 h('div', { className: 'role-dropdown-section-header' },
-                  h('span', null, 'WORKSPACE PERSPECTIVE'),
+                  h('span', null, 'WORKSPACE PERSPECTIVE (DEMO)'),
                   simulatedRole && h('button', {
                     type: 'button',
                     className: 'role-reset-link',
@@ -4678,7 +4695,7 @@ function App() {
                   }, '👑 Reset View')
                 ),
                 h('div', { className: 'role-dropdown-section-desc' },
-                  'Switch roles to experience tailored navigation, permissions, and financial masking:'
+                  'Switch roles to experience tailored navigation, permissions, and financial masking in the demo sandbox:'
                 ),
 
                 // Rich Role Cards
@@ -4746,14 +4763,66 @@ function App() {
                 )
               )
             ) :
-            // Locked Role Badge for Staff Members
-            h('div', {
-              className: 'role-selector-locked-badge',
-              title: `Assigned Role: ${roleConfig.name} · Role assigned by Workspace Admin. Contact your admin to request permission changes.`
-            },
-              h('span', { style: { fontSize: 13 } }, roleConfig.icon),
-              h('span', { className: 'role-trigger-label' }, effectiveRole === 'owner' ? 'Owner' : effectiveRole === 'operator' ? 'Operator' : effectiveRole === 'clerk' ? 'Clerk' : 'Accountant'),
-              h('span', { style: { fontSize: 10, opacity: 0.75, marginLeft: 2 } }, '🔒')
+            // REGULAR ACCOUNT: Access is governed strictly by assigned role (No perspective simulation)
+            (isActualAdmin ?
+              // Owner in Regular Account: Can see everything, but cannot simulate other roles
+              h('div', { className: 'role-selector-dropdown-wrap' },
+                h('button', {
+                  type: 'button',
+                  className: 'role-selector-trigger',
+                  onClick: (e) => { e.stopPropagation(); setShowRoleDropdown(prev => !prev); },
+                  title: 'Plant Owner Governance (Full Enterprise Access)'
+                },
+                  h('span', { style: { fontSize: 13 } }, '👑'),
+                  h('span', { className: 'role-trigger-label' }, 'Owner'),
+                  h('span', { style: { fontSize: 9, opacity: 0.7, marginLeft: 2 } }, '▼')
+                ),
+                showRoleDropdown && h('div', { className: 'role-dropdown-menu', onClick: e => e.stopPropagation() },
+                  h('div', { className: 'role-dropdown-user-card' },
+                    h('div', { className: 'role-dropdown-avatar' }, (currentUser?.name || 'O').charAt(0).toUpperCase()),
+                    h('div', { style: { flex: 1, minWidth: 0 } },
+                      h('div', { className: 'role-dropdown-user-name' }, currentUser?.name || 'Plant Owner'),
+                      h('div', { className: 'role-dropdown-user-email' }, currentUser?.email || 'owner@plant.com')
+                    ),
+                    h('span', { className: 'role-badge role-badge-owner', style: { fontSize: 9.5, fontWeight: 700 } }, '👑 Superadmin')
+                  ),
+                  h('div', {
+                    style: {
+                      padding: '9px 12px',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      color: 'var(--text-muted)',
+                      marginBottom: 10,
+                      border: '1px solid var(--border-light)',
+                      lineHeight: 1.4
+                    }
+                  },
+                    '🏢 Production Account: You have full unrestricted access across all 9 enterprise modules. Role simulation is disabled in live organizations.'
+                  ),
+                  h('div', { className: 'role-dropdown-admin-section', style: { borderTop: 'none', marginTop: 0, paddingTop: 0 } },
+                    h('button', {
+                      type: 'button',
+                      className: 'role-dropdown-action-btn',
+                      onClick: () => { setShowRoleDropdown(false); setShowAssignRoleModal(true); }
+                    }, '➕ Assign / Add Member Role'),
+                    h('button', {
+                      type: 'button',
+                      className: 'role-dropdown-action-btn secondary',
+                      onClick: () => { setShowRoleDropdown(false); setActiveTab('settings'); setSettingsTab('team'); }
+                    }, '👥 Manage Team Roster & Roles →')
+                  )
+                )
+              ) :
+              // Staff Member in Regular Account: Can only check what their assigned role allows (Locked)
+              h('div', {
+                className: 'role-selector-locked-badge',
+                title: `Assigned Role: ${roleConfig.name} · Role assigned by Workspace Admin. In production, you can only check what your role allows.`
+              },
+                h('span', { style: { fontSize: 13 } }, roleConfig.icon),
+                h('span', { className: 'role-trigger-label' }, roleConfig.name.split(' ')[0]),
+                h('span', { style: { fontSize: 10, opacity: 0.75, marginLeft: 2 } }, '🔒')
+              )
             ),
 
           // Universal Search & Command Palette Trigger Button (Ctrl+K)
@@ -4813,7 +4882,7 @@ function App() {
       ),
 
       // Active Role Simulation Notice Banner (Only for Admins)
-      simulatedRole && isActualAdmin && h('div', { className: 'role-sim-banner' },
+      isDemoAccount && simulatedRole && isActualAdmin && h('div', { className: 'role-sim-banner' },
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
           h('span', null, '👁️'),
           h('span', null,
@@ -7214,11 +7283,12 @@ function App() {
               )
             ),
 
-            // Interactive Role Simulator Card
+            // Interactive Role Simulator Card (Demo Sandbox Only)
+            isDemoAccount ?
             h('div', { className: 'card', style: { padding: 22 } },
               h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 } },
                 h('div', null,
-                  h('h3', { className: 'card-title', style: { margin: 0 } }, '🎭 Interactive Role Simulator (Admin Preview)'),
+                  h('h3', { className: 'card-title', style: { margin: 0 } }, '🎭 Interactive Role Simulator (Demo Sandbox Preview)'),
                   h('p', { className: 'card-subtitle', style: { margin: 0, marginTop: 4 } },
                     canChangeRole ?
                       'Experience ForgeLedger through the perspective of different plant personnel. Switch views instantly to test access restrictions.' :
@@ -7262,7 +7332,7 @@ function App() {
                 h('div', { className: 'alert alert-info', style: { margin: 0 } },
                   `🔒 Role simulation is restricted. Your account is currently assigned to ${roleConfig.icon} ${roleConfig.name} by your Workspace Admin.`
                 )
-            ),
+            ) : null,
 
             // Team Roster Table
             h('div', { className: 'card', style: { padding: 22 } },

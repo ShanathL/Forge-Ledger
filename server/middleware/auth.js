@@ -42,7 +42,14 @@ async function requireAuth(req, res, next) {
       }
     }
 
+    const isDemo = Boolean(
+      user.is_demo ||
+      user.id === 1 ||
+      (user.email && user.email.toLowerCase().includes('demo'))
+    );
+
     req.user = {
+      is_demo: isDemo,
       id: user.id,
       name: user.name,
       email: user.email,

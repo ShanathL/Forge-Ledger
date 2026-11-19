@@ -50,6 +50,8 @@ router.post('/signup', async (req, res) => {
         name: user.name,
         email: user.email,
         company_id: user.company_id,
+        is_demo: false,
+        role: user.role || 'owner',
         company
       }
     });
@@ -108,6 +110,8 @@ router.post('/login', async (req, res) => {
         name: user.name,
         email: user.email,
         company_id: user.company_id,
+        is_demo: Boolean(user.is_demo || user.id === 1 || (user.email && user.email.includes('demo'))),
+        role: user.role || 'owner',
         company
       }
     });
